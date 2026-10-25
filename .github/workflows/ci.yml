@@ -28,4 +28,4 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - run: deno check supabase/functions/tuya/index.ts supabase/functions/snapshot/index.ts
+      - run: deno check --node-modules-dir=none supabase/functions/tuya/index.ts supabase/functions/snapshot/index.ts
