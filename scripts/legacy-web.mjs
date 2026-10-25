@@ -83,6 +83,17 @@ const gapCss = Object.entries(GAPS)
 const errorOverlay = `<script>(function(){function show(m){var d=document.getElementById('sarry-erro');if(!d){d=document.createElement('pre');d.id='sarry-erro';d.style.cssText='position:fixed;left:0;right:0;bottom:0;max-height:50%;overflow:auto;margin:0;padding:12px;background:#300;color:#fff;font:12px monospace;z-index:99999;white-space:pre-wrap';(document.body||document.documentElement).appendChild(d);}d.textContent+=m+'\\n';}window.onerror=function(msg,src,line,col,err){show('Erro: '+msg+' ('+(src||'').split('/').pop()+':'+line+':'+col+')'+(err&&err.stack?'\\n'+err.stack:''));};window.addEventListener('unhandledrejection',function(e){var r=e.reason;show('Promise: '+(r&&(r.stack||r.message)||r));});})();</script>`;
 
 writeFileSync(join(JS_DIR, 'polyfills.js'), polyfillCode);
+
+// Cores no formato "rgb(R G B / A)" só funcionam a partir do Safari 12.1; vira rgba(R, G, B, A)
+const CSS_DIR = join(DIST, '_expo/static/css');
+const MODERN_RGB = /rgb\(\s*(\d+)\s+(\d+)\s+(\d+)\s*(?:\/\s*(var\([^()]*\)|[\d.]+%?)\s*)?\)/g;
+for (const file of readdirSync(CSS_DIR).filter((f) => f.endsWith('.css'))) {
+  const path = join(CSS_DIR, file);
+  writeFileSync(
+    path,
+    readFileSync(path, 'utf8').replace(MODERN_RGB, (_, r, g, b, a) => (a ? `rgba(${r},${g},${b},${a})` : `rgb(${r},${g},${b})`)),
+  );
+}
 for (const html of readdirSync(DIST).filter((f) => f.endsWith('.html'))) {
   const path = join(DIST, html);
   const src = readFileSync(path, 'utf8');
