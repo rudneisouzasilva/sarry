@@ -122,6 +122,8 @@ Se der erro, a mensagem diz o motivo. Os mais comuns:
 | `Tuya: sign invalid` | Access ID/Secret trocados ou com espaço |
 | `Tuya: permission deny` / `No permissions` | Serviço de API não assinado ou data center errado em `TUYA_BASE_URL` |
 | Lista vazia | `TUYA_UID` errado ou conta do app não vinculada ao projeto |
+| Ao vincular: *The data centers are inconsistent* | A conta do app está em outro data center. Em *Overview > Data Center > Edit* marque o *Eastern Data Center*, troque o seletor no canto superior direito de *Link App Account* e escaneie de novo; depois use `TUYA_BASE_URL=https://openapi-ueaz.tuyaus.com` |
+| O app Nova Digital não lê o QR | App de marca própria: migre os aparelhos para o Smart Life (passo 1.1.4) |
 | `Sua conta ainda não foi liberada` | Falta o passo 1.2.6 |
 
 ---
