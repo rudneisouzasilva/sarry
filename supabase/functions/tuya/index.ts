@@ -62,7 +62,21 @@ async function getModel(tuya: TuyaClient, id: string) {
   }
 }
 
-async function getSpec(tuya: TuyaClient, id: string) {
+type DeviceSpecDTO = { category: string; functions: { code: string }[]; status: unknown[]; model: { code: string }[] };
+
+// Especificação na memória da instância: evita ir ao banco a cada comando
+const specMemory = new Map<string, { at: number; spec: DeviceSpecDTO }>();
+const SPEC_MEMORY_MS = 60 * 60_000;
+
+async function getSpec(tuya: TuyaClient, id: string): Promise<DeviceSpecDTO> {
+  const hit = specMemory.get(id);
+  if (hit && Date.now() - hit.at < SPEC_MEMORY_MS) return hit.spec;
+  const spec = await loadSpec(tuya, id);
+  specMemory.set(id, { at: Date.now(), spec });
+  return spec;
+}
+
+async function loadSpec(tuya: TuyaClient, id: string) {
   return tuya.cached(`spec2:${id}`, 24 * 3600, async () => {
     const spec = await tuya.request<Spec>('GET', `/v1.0/iot-03/devices/${id}/specification`);
     const map = (list: SpecFunction[] = []) =>
@@ -128,7 +142,7 @@ async function commandDevice(
   } catch (err) {
     error = err instanceof Error ? err.message : String(err);
   }
-  await db.from('command_log').insert({
+  const log = db.from('command_log').insert({
     user_id: userId,
     device_id: id,
     target: params.target ?? null,
@@ -137,19 +151,34 @@ async function commandDevice(
     ok: !error,
     error,
   });
-  if (error) throw new HttpError(502, `O aparelho não aceitou o comando: ${error}`);
-
-  await tuya.invalidate('devices');
-  // registra na hora a mudança de liga/desliga, para o histórico de uso ficar exato
-  const switches = commands.filter((c) => typeof c.value === 'boolean' && /^(switch(_led|_fan)?(_\d+)?|power)$/i.test(c.code));
-  if (switches.length) {
-    await recordChanges(
-      db,
-      switches.map((c) => ({ device_id: id, channel: c.code, is_on: c.value as boolean, online: true })),
-      'comando',
-    );
+  if (error) {
+    await log;
+    throw new HttpError(502, `O aparelho não aceitou o comando: ${error}`);
   }
+
+  // o cache precisa sumir antes da resposta (o app recarrega logo depois); o resto fica para depois
+  const switches = commands.filter((c) => typeof c.value === 'boolean' && /^(switch(_led|_fan)?(_\d+)?|power)$/i.test(c.code));
+  const after = Promise.all([
+    log,
+    // registra na hora a mudança de liga/desliga, para o histórico de uso ficar exato
+    switches.length
+      ? recordChanges(
+          db,
+          switches.map((c) => ({ device_id: id, channel: c.code, is_on: c.value as boolean, online: true })),
+          'comando',
+        )
+      : null,
+  ]).catch((err) => console.error('pós-comando', err));
+  await tuya.invalidate('devices');
+  inBackground(after);
   return { ok: true };
+}
+
+// Termina um trabalho depois de responder ao app (EdgeRuntime.waitUntil); fora do Supabase, espera
+function inBackground(work: Promise<unknown>) {
+  const runtime = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime;
+  if (runtime) runtime.waitUntil(work);
+  else return work;
 }
 
 async function quickAction(

@@ -55,12 +55,14 @@ function canonicalPath(path: string, query?: Record<string, string | number | un
 // Códigos da Tuya que indicam token inválido/expirado
 const TOKEN_ERRORS = new Set([1010, 1011, 1012]);
 
+// Token guardado na memória da instância (sobrevive entre chamadas enquanto ela estiver quente)
+let sharedToken: TokenRow | null = null;
+
 export class TuyaClient {
   private accessId = env('TUYA_ACCESS_ID');
   private accessSecret = env('TUYA_ACCESS_SECRET');
   private baseUrl = (Deno.env.get('TUYA_BASE_URL') || 'https://openapi.tuyaus.com').replace(/\/$/, '');
   readonly uid = env('TUYA_UID');
-  private token: TokenRow | null = null;
 
   constructor(private db: SupabaseClient) {}
 
@@ -97,7 +99,7 @@ export class TuyaClient {
       refresh_token: result.refresh_token,
       expires_at: new Date(Date.now() + result.expire_time * 1000).toISOString(),
     };
-    this.token = row;
+    sharedToken = row;
     await this.db.from('tuya_token').upsert({ id: 1, ...row, updated_at: new Date().toISOString() });
     return row;
   }
@@ -126,16 +128,16 @@ export class TuyaClient {
 
   private async getAccessToken(force = false): Promise<string> {
     if (force) return (await this.fetchNewToken()).access_token;
-    if (!this.token) {
+    if (!sharedToken) {
       const { data } = await this.db.from('tuya_token').select('access_token, refresh_token, expires_at').eq('id', 1).maybeSingle();
-      this.token = data as TokenRow | null;
+      sharedToken = data as TokenRow | null;
     }
-    if (!this.token) return (await this.fetchNewToken()).access_token;
+    if (!sharedToken) return (await this.fetchNewToken()).access_token;
     // renova 5 minutos antes de expirar
-    if (new Date(this.token.expires_at).getTime() - Date.now() < 5 * 60_000) {
-      return (await this.refreshToken(this.token.refresh_token)).access_token;
+    if (new Date(sharedToken.expires_at).getTime() - Date.now() < 5 * 60_000) {
+      return (await this.refreshToken(sharedToken.refresh_token)).access_token;
     }
-    return this.token.access_token;
+    return sharedToken.access_token;
   }
 
   async request<T>(

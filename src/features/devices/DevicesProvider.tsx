@@ -46,7 +46,7 @@ function applyCommands(device: Device, commands: Command[]): Device {
   };
 }
 
-const REFRESH_AFTER_COMMAND_MS = 1500;
+const REFRESH_AFTER_COMMAND_MS = 2500; // dá tempo de a Tuya refletir o comando, sem "piscar" o estado antigo
 const MIN_REFRESH_GAP_MS = 10_000;
 
 export function DevicesProvider({ children }: { children: ReactNode }) {
