@@ -1,0 +1,14 @@
+# Configuração do Supabase CLI para o Sarry
+project_id = "sarry"
+
+[auth]
+# Depois de criar sua conta, deixe o cadastro público desligado no painel (Authentication > Sign In / Providers).
+enable_signup = false
+
+# A verificação do usuário é feita dentro da função (requireMember), o que funciona com as chaves novas e antigas.
+[functions.tuya]
+verify_jwt = false
+
+# Protegida pelo segredo CRON_SECRET, chamada só pelo pg_cron
+[functions.snapshot]
+verify_jwt = false
