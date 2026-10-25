@@ -130,7 +130,14 @@ export function acCapabilities(device: Device, spec: DeviceSpec | null): AcCapab
     power: power ? { code: power.code, via: power.via } : undefined,
     temp: tempCap,
     current: currentDef ? { code: currentDef.code, scale: currentDef.values.scale ?? 0 } : undefined,
-    mode: mode ? { code: mode.code, via: mode.via, options: enumOptions(mode.values.range, MODE_LABELS) } : undefined,
+    mode: mode
+      ? {
+          code: mode.code,
+          via: mode.via,
+          // ar "só frio": o módulo anuncia "hot", mas o aparelho não aquece
+          options: enumOptions(mode.values.range, MODE_LABELS).filter((o) => !(device.coolingOnly && o.label === 'Calor')),
+        }
+      : undefined,
     fan: fan ? { code: fan.code, via: fan.via, options: enumOptions(fan.values.range, FAN_LABELS, true) } : undefined,
     extras: EXTRAS.flatMap(({ label, codes }) => {
       const f = find(functions, model, codes, 'boolean');

@@ -28,6 +28,7 @@ export default function EditarDispositivo() {
   const [room, setRoom] = useState('');
   const [kind, setKind] = useState<DeviceKind>('other');
   const [hidden, setHidden] = useState(false);
+  const [coolingOnly, setCoolingOnly] = useState(false);
   const [channels, setChannels] = useState<Record<string, ChannelMeta>>({});
   const [saving, setSaving] = useState(false);
 
@@ -37,6 +38,7 @@ export default function EditarDispositivo() {
     setRoom(device.room ?? '');
     setKind(device.kind);
     setHidden(device.hidden);
+    setCoolingOnly(device.coolingOnly);
     setChannels(
       Object.fromEntries(device.channels.map((c) => [c.code, { name: c.name, room: c.room ?? '', hidden: c.hidden }])),
     );
@@ -63,6 +65,7 @@ export default function EditarDispositivo() {
         room: room.trim() || null,
         kind,
         hidden,
+        cooling_only: coolingOnly,
         channels: multi
           ? Object.fromEntries(
               Object.entries(channels).map(([code, m]) => [code, { name: m.name.trim() || undefined, room: m.room.trim() || undefined, hidden: m.hidden }]),
@@ -103,6 +106,15 @@ export default function EditarDispositivo() {
             ]}
           />
         </View>
+        {kind === 'ac' ? (
+          <View className="flex-row items-center justify-between gap-3">
+            <View className="flex-1">
+              <Txt variant="body">Ar só frio</Txt>
+              <Txt variant="caption">Esconde o modo Calor</Txt>
+            </View>
+            <Toggle value={coolingOnly} onChange={setCoolingOnly} label="Ar só frio" tone="sky" />
+          </View>
+        ) : null}
         <View className="flex-row items-center justify-between">
           <Txt variant="body">Ocultar no app</Txt>
           <Toggle value={hidden} onChange={setHidden} label="Ocultar no app" />

@@ -19,6 +19,7 @@ export type Device = {
   online: boolean;
   isSub: boolean;
   powerW: number | null;
+  coolingOnly: boolean;
   hidden: boolean;
   sort: number;
   status: Record<string, unknown>;
@@ -85,6 +86,7 @@ export type DeviceRow = {
   kind: DeviceKind;
   category: string | null;
   power_w: number | null;
+  cooling_only: boolean;
   channels: Record<string, { name?: string; room?: string; hidden?: boolean }>;
   hidden: boolean;
   sort: number;

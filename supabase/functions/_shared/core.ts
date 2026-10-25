@@ -27,6 +27,7 @@ type DeviceRow = {
   category: string | null;
   product_name: string | null;
   power_w: number | null;
+  cooling_only: boolean;
   channels: Record<string, { name?: string; room?: string; hidden?: boolean }>;
   is_sub: boolean;
   online: boolean | null;
@@ -47,6 +48,7 @@ export type DeviceDTO = {
   online: boolean;
   isSub: boolean;
   powerW: number | null;
+  coolingOnly: boolean;
   hidden: boolean;
   sort: number;
   status: Record<string, unknown>;
@@ -165,6 +167,7 @@ export function toDTO(device: TuyaDevice, row: DeviceRow | undefined): DeviceDTO
     online: device.online,
     isSub: Boolean(device.sub),
     powerW: row?.power_w ?? null,
+    coolingOnly: row?.cooling_only ?? false,
     hidden: row?.hidden ?? false,
     sort: row?.sort ?? 0,
     status,
