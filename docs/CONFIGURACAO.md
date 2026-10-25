@@ -16,7 +16,9 @@ O único passo que exige um computador (por alguns minutos) é testar no **Expo 
 1. Crie uma conta em <https://platform.tuya.com> e entre.
 2. **Cloud > Development > Create Cloud Project**:
    - Industry: *Smart Home*; Development Method: *Smart Home*.
-   - Data Center: **Western America** (contas do Brasil normalmente ficam aqui).
+   - Data Center: **West Coast Data Center** (Western America; contas do Brasil normalmente ficam aqui).
+     Se os aparelhos não aparecerem após vincular o app, adicione também o *Eastern Data Center* e use
+     `TUYA_BASE_URL=https://openapi-ueaz.tuyaus.com`.
 3. Na tela de serviços de API, confirme que estes estão assinados (aba **Service API** do projeto):
    - *IoT Core*
    - *Authorization Token Management*
@@ -46,7 +48,7 @@ O único passo que exige um computador (por alguns minutos) é testar no **Expo 
    | --- | --- |
    | `TUYA_ACCESS_ID` | Access ID da Tuya |
    | `TUYA_ACCESS_SECRET` | Access Secret da Tuya |
-   | `TUYA_BASE_URL` | `https://openapi.tuyaus.com` (Western America) |
+   | `TUYA_BASE_URL` | `https://openapi.tuyaus.com` (West Coast / Western America) |
    | `TUYA_UID` | UID da conta vinculada |
    | `CRON_SECRET` | um texto aleatório longo (ex.: gere em <https://www.uuidgenerator.net>) |
 
