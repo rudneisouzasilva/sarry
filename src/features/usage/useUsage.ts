@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { isLightChannel } from '@/features/devices/DevicesProvider';
 import { api } from '@/lib/api';
 import { shortWeekday, startOfLocalDay } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
@@ -107,10 +108,10 @@ export function useUsage(devices: Device[]) {
     const missingPower = [...acIds].some((id) => !byId.get(id)?.powerW);
 
     const lightsToday = devices
-      .filter((d) => d.kind === 'light' && !d.hidden)
+      .filter((d) => !d.hidden)
       .flatMap((d) =>
         d.channels
-          .filter((c) => !c.hidden)
+          .filter((c) => !c.hidden && isLightChannel(d, c.code))
           .map((c) => ({
             key: `${d.id}:${c.code}`,
             name: c.name,

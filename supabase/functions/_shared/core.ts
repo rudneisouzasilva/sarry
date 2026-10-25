@@ -101,13 +101,38 @@ export function sanitize(device: TuyaDevice) {
   return rest;
 }
 
+// Canais que contam como luz: teclas dos interruptores e a luz do ventilador de teto
+export function isLightChannel(kind: DeviceRow['kind'], code: string) {
+  return kind === 'light' || (kind === 'fan' && code === 'switch_led');
+}
+
+// No interruptor de ventilador, a luz e o sentido (ventilar/exaustor) só existem no modelo v2:
+// lemos pelo shadow e juntamos ao status
+const FAN_EXTRA_CODES = ['switch_led', 'control_back'];
+
+async function addFanExtras(tuya: TuyaClient, device: TuyaDevice) {
+  const missing = FAN_EXTRA_CODES.filter((code) => !device.status?.some((s) => s.code === code));
+  if (!FAN_CATEGORIES.has(device.category) || !missing.length) return device;
+  try {
+    const res = await tuya.request<{ properties: { code: string; value: unknown }[] }>(
+      'GET',
+      `/v2.0/cloud/thing/${device.id}/shadow/properties`,
+      { query: { codes: missing.join(',') } },
+    );
+    const extras = (res.properties ?? []).filter((p) => missing.includes(p.code) && p.value !== null && p.value !== undefined);
+    return { ...device, status: [...(device.status ?? []), ...extras.map((p) => ({ code: p.code, value: p.value }))] };
+  } catch {
+    return device;
+  }
+}
+
 export async function fetchTuyaDevices(tuya: TuyaClient, force = false): Promise<TuyaDevice[]> {
   return tuya.cached(
     'devices',
     15,
     async () => {
       const list = await tuya.request<TuyaDevice[]>('GET', `/v1.0/users/${tuya.uid}/devices`);
-      return list.map((d) => sanitize(d) as TuyaDevice);
+      return Promise.all(list.map((d) => addFanExtras(tuya, sanitize(d) as TuyaDevice)));
     },
     force,
   );
@@ -181,9 +206,10 @@ export function toDTO(device: TuyaDevice, row: DeviceRow | undefined): DeviceDTO
     status,
     channels: channelStates(kind, status).map(({ code, isOn }, i) => {
       const meta = row?.channels?.[code] ?? {};
+      const fallback = kind === 'fan' && code === 'switch_led' ? `Luz do ${name}` : multi && kind !== 'fan' ? `${name} ${i + 1}` : name;
       return {
         code,
-        name: meta.name || (multi ? `${name} ${i + 1}` : name),
+        name: meta.name || fallback,
         room: meta.room ?? row?.room ?? null,
         hidden: meta.hidden ?? false,
         isOn,

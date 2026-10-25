@@ -95,6 +95,17 @@ async function issueProperties(tuya: TuyaClient, id: string, commands: Command[]
 
 async function sendCommands(tuya: TuyaClient, id: string, commands: Command[], via: 'standard' | 'properties' = 'standard') {
   if (via === 'properties') return issueProperties(tuya, id, commands);
+  // códigos fora do conjunto padrão (ex.: luz e sentido do ventilador) vão pelo modelo de propriedades
+  const spec = await getSpec(tuya, id).catch(() => null);
+  if (spec) {
+    const standard = new Set(spec.functions.map((f) => f.code));
+    const extra = commands.filter((c) => !standard.has(c.code) && spec.model.some((p) => p.code === c.code));
+    if (extra.length) {
+      await issueProperties(tuya, id, extra);
+      commands = commands.filter((c) => !extra.includes(c));
+      if (!commands.length) return;
+    }
+  }
   try {
     await tuya.request('POST', `/v1.0/iot-03/devices/${id}/commands`, { body: { commands } });
   } catch (err) {

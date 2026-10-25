@@ -1,6 +1,6 @@
 // Alertas push: luz esquecida acesa e aparelho offline. Avaliados a cada snapshot.
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
-import type { DeviceDTO } from './core.ts';
+import { type DeviceDTO, isLightChannel } from './core.ts';
 
 const TZ = 'America/Sao_Paulo';
 
@@ -53,7 +53,7 @@ export async function evaluateAlerts(db: SupabaseClient, devices: DeviceDTO[]) {
   const now = Date.now();
 
   if (settings.notify_forgotten) {
-    const lights = devices.filter((d) => d.kind === 'light' && d.online && !d.hidden);
+    const lights = devices.filter((d) => d.online && !d.hidden && d.channels.some((c) => isLightChannel(d.kind, c.code)));
     const { data: latest } = await db
       .from('latest_samples')
       .select('device_id, channel, is_on, sampled_at')
@@ -63,7 +63,7 @@ export async function evaluateAlerts(db: SupabaseClient, devices: DeviceDTO[]) {
     const lateNight = hour >= settings.late_night_hour && hour < 6;
 
     for (const d of lights) {
-      for (const c of d.channels.filter((ch) => ch.isOn && !ch.hidden)) {
+      for (const c of d.channels.filter((ch) => ch.isOn && !ch.hidden && isLightChannel(d.kind, ch.code))) {
         const sample = since.get(`${d.id}|${c.code}`);
         if (!sample?.is_on) continue;
         const onFor = now - new Date(sample.sampled_at).getTime();

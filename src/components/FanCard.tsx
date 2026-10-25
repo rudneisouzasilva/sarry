@@ -1,5 +1,5 @@
 import { View } from 'react-native';
-import { Fan, Lightbulb } from 'lucide-react-native';
+import { Fan } from 'lucide-react-native';
 import { useDevices } from '@/features/devices/DevicesProvider';
 import { colors } from '@/theme/colors';
 import type { CommandSource, Device } from '@/types';
@@ -21,13 +21,19 @@ function nearestSpeed(raw: unknown) {
   return SPEEDS.reduce((best, s) => (Math.abs(Number(s.value) - raw) < Math.abs(Number(best.value) - raw) ? s : best)).value;
 }
 
-// Ventilador de teto: liga/desliga, velocidade e, se houver, a luz do ventilador
+// Sentido do motor: para a frente ventila, invertido exaure
+const DIRECTIONS = [
+  { value: 'forward', label: 'Ventilar' },
+  { value: 'reversal', label: 'Exaustor' },
+];
+
+// Ventilador de teto: liga/desliga, velocidade e sentido. A luz aparece junto das outras luzes.
 export function FanCard({ device, source = 'app' }: { device: Device; source?: CommandSource }) {
   const { command } = useDevices();
   const fan = device.channels.find((c) => c.code === 'switch_fan');
-  const light = device.channels.find((c) => c.code === 'switch_led' && !c.hidden);
   const isOn = Boolean(device.online && fan?.isOn);
   const speed = device.status.fan_speed;
+  const direction = device.status.control_back;
 
   const send = (code: string, value: unknown, label = device.name) => command(device, [{ code, value }], { source, label });
 
@@ -63,13 +69,16 @@ export function FanCard({ device, source = 'app' }: { device: Device; source?: C
           />
         </View>
       ) : null}
-      {light ? (
-        <View className="mt-4 flex-row items-center gap-3">
-          <Lightbulb size={20} color={light.isOn ? colors.amber : colors.muted} />
-          <Txt variant="label" className="flex-1">
-            Luz do ventilador
-          </Txt>
-          <Toggle value={device.online && light.isOn} onChange={(v) => send(light.code, v, light.name)} label="Luz do ventilador" disabled={!device.online} />
+      {typeof direction === 'string' ? (
+        <View className="mt-3">
+          <Segmented
+            label="Função"
+            tone="amber"
+            options={DIRECTIONS}
+            value={direction}
+            onChange={(v) => send('control_back', v, `${device.name}: ${v === 'forward' ? 'ventilar' : 'exaustor'}`)}
+            disabled={!device.online}
+          />
         </View>
       ) : null}
     </Card>

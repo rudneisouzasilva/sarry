@@ -120,12 +120,17 @@ export function DevicesProvider({ children }: { children: ReactNode }) {
 // Lista "plana" de luzes: cada tecla de um interruptor multi-tecla vira uma luz
 export type Light = { device: Device; code: string; name: string; room: string | null; isOn: boolean };
 
+// Canais que contam como luz: teclas dos interruptores e a luz do ventilador de teto
+export function isLightChannel(device: Device, code: string) {
+  return device.kind === 'light' || (device.kind === 'fan' && code === 'switch_led');
+}
+
 export function lightsOf(devices: Device[]): Light[] {
   return devices
-    .filter((d) => d.kind === 'light' && !d.hidden)
+    .filter((d) => !d.hidden)
     .flatMap((d) =>
       d.channels
-        .filter((c) => !c.hidden)
+        .filter((c) => !c.hidden && isLightChannel(d, c.code))
         .map((c) => ({ device: d, code: c.code, name: c.name, room: c.room, isOn: d.online && c.isOn })),
     );
 }
