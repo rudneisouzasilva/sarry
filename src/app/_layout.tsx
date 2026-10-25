@@ -16,6 +16,7 @@ import { DevicesProvider } from '@/features/devices/DevicesProvider';
 import { ConfigMissing } from '@/features/auth/ConfigMissing';
 import { configureNotifications, registerPush } from '@/lib/push';
 import { isConfigured } from '@/lib/supabase';
+import { watchUpdates } from '@/lib/updates';
 import { colors } from '@/theme/colors';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -27,6 +28,7 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
 }
 
 export default function RootLayout() {
+  useEffect(() => watchUpdates(), []);
   const [fontsLoaded, fontError] = useFonts({
     Sora_600SemiBold,
     Sora_700Bold,

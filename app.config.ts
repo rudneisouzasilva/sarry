@@ -59,6 +59,10 @@ const config: ExpoConfig = {
     ['expo-notifications', { color: '#F2B544' }],
     './plugins/with-android-shortcuts',
   ],
+  // Atualizações pela internet (EAS Update): mudanças de tela chegam sem reinstalar o APK.
+  // Ao adicionar um módulo nativo, suba "version" para forçar um APK novo.
+  runtimeVersion: { policy: 'appVersion' },
+  ...(EAS_PROJECT_ID ? { updates: { url: `https://u.expo.dev/${EAS_PROJECT_ID}`, checkAutomatically: 'ON_LOAD' } } : {}),
   experiments: {
     typedRoutes: false,
   },

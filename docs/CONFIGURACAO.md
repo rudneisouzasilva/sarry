@@ -180,6 +180,12 @@ Nada novo para configurar.
 
 Com computador, o equivalente é `npx eas-cli@latest build -p android --profile preview`.
 
+**Atualizações sem reinstalar (EAS Update)**: depois de instalar um APK gerado com o `expo-updates`,
+cada push na `main` que mexe no app roda *Actions > Atualizar app (EAS Update)* e publica as mudanças
+de tela. O app baixa e aplica sozinho ao abrir (ou ao voltar para ele, a cada 15 min no máximo).
+Mudanças nativas (novo módulo, ícone, permissões) ainda exigem um APK novo: nesse caso, suba
+`version` em `app.config.ts` antes de gerar o APK.
+
 ### 4.2 Notificações push (Android)
 
 O push remoto no Android precisa de um projeto Firebase gratuito:

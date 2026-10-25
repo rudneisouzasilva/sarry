@@ -1,0 +1,38 @@
+name: Atualizar app (EAS Update)
+
+# Publica as mudanças de tela para o APK instalado, sem reinstalar.
+# Roda a cada push na main que mexe no app, ou em Actions > Atualizar app > Run workflow.
+# Segredo necessário: EXPO_TOKEN.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'assets/**'
+      - 'app.config.ts'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+concurrency:
+  group: eas-update
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - run: npm ci
+      - name: Publicar atualização
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message || 'Atualização manual' }}
+        run: eas update --channel preview --environment preview --platform android --message "$(echo "$COMMIT_MESSAGE" | head -n 1)" --non-interactive
