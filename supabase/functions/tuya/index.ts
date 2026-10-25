@@ -2,6 +2,7 @@
 // POST /functions/v1/tuya  { action: '...', ...params }
 import { corsHeaders, json } from '../_shared/cors.ts';
 import { adminClient, HttpError, requireMember } from '../_shared/supabase.ts';
+import { Timer } from '../_shared/timing.ts';
 import { TuyaClient, TuyaError } from '../_shared/tuya.ts';
 import {
   type DeviceDTO,
@@ -107,10 +108,17 @@ async function issueProperties(tuya: TuyaClient, id: string, commands: Command[]
   await tuya.request('POST', `/v2.0/cloud/thing/${id}/shadow/properties/issue`, { body: { properties } });
 }
 
-async function sendCommands(tuya: TuyaClient, id: string, commands: Command[], via: 'standard' | 'properties' = 'standard') {
+async function sendCommands(
+  tuya: TuyaClient,
+  id: string,
+  commands: Command[],
+  via: 'standard' | 'properties' = 'standard',
+  timer?: Timer,
+) {
   if (via === 'properties') return issueProperties(tuya, id, commands);
   // códigos fora do conjunto padrão (ex.: luz e sentido do ventilador) vão pelo modelo de propriedades
   const spec = await getSpec(tuya, id).catch(() => null);
+  timer?.mark('spec');
   if (spec) {
     const standard = new Set(spec.functions.map((f) => f.code));
     const extra = commands.filter((c) => !standard.has(c.code) && spec.model.some((p) => p.code === c.code));
@@ -133,16 +141,20 @@ async function commandDevice(
   tuya: TuyaClient,
   userId: string,
   params: { id: string; commands: Command[]; source?: Source; target?: string; via?: 'standard' | 'properties' },
+  timer = new Timer(),
 ) {
   const { id, commands } = params;
   if (!id || !Array.isArray(commands) || !commands.length) throw new HttpError(400, 'Comando inválido');
   let error: string | null = null;
   try {
-    await sendCommands(tuya, id, commands, params.via);
+    await sendCommands(tuya, id, commands, params.via, timer);
   } catch (err) {
     error = err instanceof Error ? err.message : String(err);
   }
+  timer.mark('tuya');
+  const timing = timer.summary();
   const log = db.from('command_log').insert({
+    timing,
     user_id: userId,
     device_id: id,
     target: params.target ?? null,
@@ -171,7 +183,7 @@ async function commandDevice(
   ]).catch((err) => console.error('pós-comando', err));
   await tuya.invalidate('devices');
   inBackground(after);
-  return { ok: true };
+  return { ok: true, timing };
 }
 
 // Termina um trabalho depois de responder ao app (EdgeRuntime.waitUntil); fora do Supabase, espera
@@ -280,8 +292,10 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Use POST' }, 405);
 
   const db = adminClient();
+  const timer = new Timer();
   try {
     const user = await requireMember(req, db);
+    timer.mark('auth');
     const body = (await req.json().catch(() => ({}))) as Body;
     const tuya = new TuyaClient(db);
     const source = (body.source as Source) ?? 'app';
@@ -303,7 +317,7 @@ Deno.serve(async (req) => {
             source,
             target: body.target as string | undefined,
             via: body.via === 'properties' ? 'properties' : 'standard',
-          }),
+          }, timer),
         );
       case 'devices.logs': {
         const hours = Math.min(Number(body.hours) || 24, 24 * 7);

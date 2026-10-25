@@ -84,6 +84,7 @@
         "npm:expo-splash-screen@~58.0.11",
         "npm:expo-status-bar@~58.0.4",
         "npm:expo-system-ui@~58.0.6",
+        "npm:expo-updates@~58.0.18",
         "npm:expo@~58.0.19",
         "npm:fast-text-encoding@^1.0.6",
         "npm:lucide-react-native@^1.61.0",
