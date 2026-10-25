@@ -57,6 +57,7 @@ const TOKEN_ERRORS = new Set([1010, 1011, 1012]);
 
 // Token guardado na memória da instância (sobrevive entre chamadas enquanto ela estiver quente)
 let sharedToken: TokenRow | null = null;
+let tokenRead: Promise<TokenRow | null> | null = null;
 
 export class TuyaClient {
   private accessId = env('TUYA_ACCESS_ID');
@@ -129,8 +130,11 @@ export class TuyaClient {
   private async getAccessToken(force = false): Promise<string> {
     if (force) return (await this.fetchNewToken()).access_token;
     if (!sharedToken) {
-      const { data } = await this.db.from('tuya_token').select('access_token, refresh_token, expires_at').eq('id', 1).maybeSingle();
-      sharedToken = data as TokenRow | null;
+      // uma leitura só, mesmo com várias chamadas ao mesmo tempo (warm + comando)
+      tokenRead ??= Promise.resolve(
+        this.db.from('tuya_token').select('access_token, refresh_token, expires_at').eq('id', 1).maybeSingle(),
+      ).then(({ data }) => data as TokenRow | null).finally(() => { tokenRead = null; });
+      sharedToken ??= await tokenRead;
     }
     if (!sharedToken) return (await this.fetchNewToken()).access_token;
     // renova 5 minutos antes de expirar

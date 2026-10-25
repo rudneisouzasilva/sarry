@@ -108,6 +108,12 @@ async function issueProperties(tuya: TuyaClient, id: string, commands: Command[]
   await tuya.request('POST', `/v2.0/cloud/thing/${id}/shadow/properties/issue`, { body: { properties } });
 }
 
+// códigos do conjunto padrão da Tuya: vão direto, sem consultar a especificação do aparelho.
+// Se algum aparelho não aceitar, o envio cai no modelo de propriedades (UNSUPPORTED) do mesmo jeito.
+const STANDARD_CODE = /^(switch(_\d+)?|switch_fan|fan_speed(_enum|_percent)?|temp_set|mode|windspeed|bright_value(_v2)?|temp_value(_v2)?|work_mode)$/;
+const allStandard = (commands: Command[] | undefined) =>
+  Array.isArray(commands) && commands.length > 0 && commands.every((c) => STANDARD_CODE.test(String(c?.code)));
+
 async function sendCommands(
   tuya: TuyaClient,
   id: string,
@@ -118,7 +124,8 @@ async function sendCommands(
 ) {
   if (via === 'properties') return issueProperties(tuya, id, commands);
   // códigos fora do conjunto padrão (ex.: luz e sentido do ventilador) vão pelo modelo de propriedades
-  const spec = await (prefetched ?? getSpec(tuya, id).catch(() => null));
+  // espera a conexão adiantada (warm) mesmo quando a especificação não é necessária
+  const spec = await (prefetched ?? (allStandard(commands) ? null : getSpec(tuya, id).catch(() => null)));
   timer?.mark('spec');
   if (spec) {
     const standard = new Set(spec.functions.map((f) => f.code));
@@ -183,8 +190,8 @@ async function commandDevice(
         )
       : null,
   ]).catch((err) => console.error('pós-comando', err));
-  await tuya.invalidate('devices');
-  inBackground(after);
+  // o app só recarrega a lista 2,5 s depois, então limpar o cache também fica para depois da resposta
+  inBackground(Promise.all([after, tuya.invalidate('devices').catch((err) => console.error('cache', err))]));
   return { ok: true, timing };
 }
 
@@ -302,7 +309,7 @@ Deno.serve(async (req) => {
     // Nada é enviado ao aparelho antes de o login ser validado.
     let prefetched: Promise<DeviceSpecDTO | null> | undefined;
     if (body.action === 'devices.command' && body.id && req.headers.get('Authorization')) {
-      const spec = getSpec(tuya, String(body.id)).catch(() => null);
+      const spec = allStandard(body.commands as Command[]) ? null : getSpec(tuya, String(body.id)).catch(() => null);
       prefetched = Promise.all([spec, tuya.warm()]).then(([s]) => s);
     }
     const user = await requireMember(req, db);
