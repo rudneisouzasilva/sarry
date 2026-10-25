@@ -1,6 +1,6 @@
 // Pós-build da web: converte o pacote para ES5 e adiciona polyfills, para abrir em
 // navegadores antigos (ex.: iPad com iOS 10, usado como painel de parede).
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { transformAsync } from '@babel/core';
 import { build } from 'esbuild';
@@ -84,6 +84,16 @@ const errorOverlay = `<script>(function(){function show(m){var d=document.getEle
 
 writeFileSync(join(JS_DIR, 'polyfills.js'), polyfillCode);
 
+// "Adicionar à Tela de Início" no iPhone/iPad: abre em tela cheia, com ícone próprio
+copyFileSync('assets/icon.png', join(DIST, 'apple-touch-icon.png'));
+const homeScreenMeta = [
+  '<meta name="apple-mobile-web-app-capable" content="yes">',
+  '<meta name="mobile-web-app-capable" content="yes">',
+  '<meta name="apple-mobile-web-app-status-bar-style" content="black">',
+  '<meta name="apple-mobile-web-app-title" content="Sarry">',
+  '<link rel="apple-touch-icon" href="/apple-touch-icon.png">',
+].join('');
+
 // Cores no formato "rgb(R G B / A)" só funcionam a partir do Safari 12.1; vira rgba(R, G, B, A)
 const CSS_DIR = join(DIST, '_expo/static/css');
 const MODERN_RGB = /rgb\(\s*(\d+)\s+(\d+)\s+(\d+)\s*(?:\/\s*(var\([^()]*\)|[\d.]+%?)\s*)?\)/g;
@@ -102,7 +112,7 @@ for (const html of readdirSync(DIST).filter((f) => f.endsWith('.html'))) {
   writeFileSync(
     path,
     src
-      .replace('<head>', `<head>${errorOverlay}`)
+      .replace('<head>', `<head>${errorOverlay}${homeScreenMeta}`)
       .replace('</head>', `<style>${gapCss}</style></head>`)
       .replace('<script src="/_expo/', '<script src="/_expo/static/js/web/polyfills.js"></script><script src="/_expo/'),
   );
