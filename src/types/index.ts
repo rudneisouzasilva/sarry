@@ -41,11 +41,22 @@ export type SpecFunction = {
   };
 };
 
+// Propriedade do modelo de coisa (v2), enviada pelo canal "properties"
+export type ModelProperty = {
+  code: string;
+  access: string; // 'rw' | 'ro' | 'wr'
+  type: string; // 'bool' | 'enum' | 'value' ...
+  values: SpecFunction['values'];
+};
+
 export type DeviceSpec = {
   category: string;
   functions: SpecFunction[];
   status: SpecFunction[];
+  model?: ModelProperty[];
 };
+
+export type CommandVia = 'standard' | 'properties';
 
 export type Scene = { id: string; name: string; enabled: boolean; api: 'v1' | 'v2' };
 export type Automation = Scene;

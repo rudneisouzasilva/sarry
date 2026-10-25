@@ -19,7 +19,7 @@ export default function ArCondicionado() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { loading, refreshing, refresh } = useDevices();
   const device = useDevice(id);
-  const { caps, spec, isOn, target, current, setPower, nudgeTemp, send } = useAc(device);
+  const { caps, spec, isOn, target, current, setPower, nudgeTemp, send, value } = useAc(device, 'app', { withShadow: true });
 
   if (!device) {
     return (
@@ -96,8 +96,8 @@ export default function ArCondicionado() {
           <Segmented
             label="Modo"
             options={caps.mode.options}
-            value={device.status[caps.mode.code] as string}
-            onChange={(v) => send(caps.mode!.code, v)}
+            value={value(caps.mode.code) as string}
+            onChange={(v) => send(caps.mode!.code, v, caps.mode!.via)}
             disabled={disabled}
           />
         </>
@@ -109,8 +109,8 @@ export default function ArCondicionado() {
           <Segmented
             label="Ventilação"
             options={caps.fan.options}
-            value={device.status[caps.fan.code] as string}
-            onChange={(v) => send(caps.fan!.code, v)}
+            value={value(caps.fan.code) as string}
+            onChange={(v) => send(caps.fan!.code, v, caps.fan!.via)}
             disabled={disabled}
           />
         </>
@@ -124,8 +124,8 @@ export default function ArCondicionado() {
               <View key={x.code} className={`min-h-14 flex-row items-center justify-between ${i ? 'border-t border-line' : ''}`}>
                 <Txt variant="body">{x.label}</Txt>
                 <Toggle
-                  value={device.status[x.code] === true}
-                  onChange={(v) => send(x.code, v)}
+                  value={value(x.code) === true}
+                  onChange={(v) => send(x.code, v, x.via)}
                   label={x.label}
                   tone="sky"
                   disabled={disabled}

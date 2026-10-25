@@ -32,25 +32,74 @@ function parseValues(raw: string | undefined) {
   }
 }
 
+type ThingProperty = {
+  code: string;
+  accessMode: string;
+  typeSpec: { type: string; range?: string[]; min?: number; max?: number; scale?: number; step?: number; unit?: string };
+};
+
+// Propriedades do modelo de coisa (v2). Alguns aparelhos têm recursos que só existem aqui,
+// fora do conjunto padrão de comandos (ex.: velocidade do ventilador do ar AUX).
+async function getModel(tuya: TuyaClient, id: string) {
+  try {
+    const res = await tuya.request<{ model: string }>('GET', `/v2.0/cloud/thing/${id}/model`);
+    const model = parseValues(res.model) as { services?: { properties?: ThingProperty[] }[] };
+    return (model.services ?? []).flatMap((s) => s.properties ?? []).map((p) => ({
+      code: p.code,
+      access: p.accessMode,
+      type: p.typeSpec.type,
+      values: {
+        range: p.typeSpec.range,
+        min: p.typeSpec.min,
+        max: p.typeSpec.max,
+        scale: p.typeSpec.scale,
+        step: p.typeSpec.step,
+        unit: p.typeSpec.unit,
+      },
+    }));
+  } catch {
+    return [];
+  }
+}
+
 async function getSpec(tuya: TuyaClient, id: string) {
-  return tuya.cached(`spec:${id}`, 24 * 3600, async () => {
+  return tuya.cached(`spec2:${id}`, 24 * 3600, async () => {
     const spec = await tuya.request<Spec>('GET', `/v1.0/iot-03/devices/${id}/specification`);
     const map = (list: SpecFunction[] = []) =>
       list.map((f) => ({ code: f.code, type: f.type, name: f.name ?? null, values: parseValues(f.values) }));
-    return { category: spec.category, functions: map(spec.functions), status: map(spec.status) };
+    return {
+      category: spec.category,
+      functions: map(spec.functions),
+      status: map(spec.status),
+      model: await getModel(tuya, id),
+    };
   });
+}
+
+async function getShadow(tuya: TuyaClient, id: string, codes?: string[]) {
+  const res = await tuya.request<{ properties: { code: string; value: unknown }[] }>(
+    'GET',
+    `/v2.0/cloud/thing/${id}/shadow/properties`,
+    { query: { codes: codes?.length ? codes.join(',') : undefined } },
+  );
+  return Object.fromEntries((res.properties ?? []).map((p) => [p.code, p.value]));
 }
 
 // Códigos de "comando não suportado" no conjunto padrão; tentamos pelo modelo de propriedades
 const UNSUPPORTED = new Set([2008, 501, 1109]);
 
-async function sendCommands(tuya: TuyaClient, id: string, commands: Command[]) {
+async function issueProperties(tuya: TuyaClient, id: string, commands: Command[]) {
+  const properties = JSON.stringify(Object.fromEntries(commands.map((c) => [c.code, c.value])));
+  await tuya.request('POST', `/v2.0/cloud/thing/${id}/shadow/properties/issue`, { body: { properties } });
+}
+
+async function sendCommands(tuya: TuyaClient, id: string, commands: Command[], via: 'standard' | 'properties' = 'standard') {
+  if (via === 'properties') return issueProperties(tuya, id, commands);
   try {
     await tuya.request('POST', `/v1.0/iot-03/devices/${id}/commands`, { body: { commands } });
   } catch (err) {
     if (!(err instanceof TuyaError) || !UNSUPPORTED.has(Number(err.code))) throw err;
-    const properties = JSON.stringify(Object.fromEntries(commands.map((c) => [c.code, c.value])));
-    await tuya.request('POST', `/v2.0/cloud/thing/${id}/shadow/properties/issue`, { body: { properties } });
+    await issueProperties(tuya, id, commands);
   }
 }
 
@@ -58,13 +107,13 @@ async function commandDevice(
   db: ReturnType<typeof adminClient>,
   tuya: TuyaClient,
   userId: string,
-  params: { id: string; commands: Command[]; source?: Source; target?: string },
+  params: { id: string; commands: Command[]; source?: Source; target?: string; via?: 'standard' | 'properties' },
 ) {
   const { id, commands } = params;
   if (!id || !Array.isArray(commands) || !commands.length) throw new HttpError(400, 'Comando inválido');
   let error: string | null = null;
   try {
-    await sendCommands(tuya, id, commands);
+    await sendCommands(tuya, id, commands, params.via);
   } catch (err) {
     error = err instanceof Error ? err.message : String(err);
   }
@@ -204,6 +253,8 @@ Deno.serve(async (req) => {
       }
       case 'devices.spec':
         return json(await getSpec(tuya, String(body.id)));
+      case 'devices.shadow':
+        return json(await getShadow(tuya, String(body.id), body.codes as string[] | undefined));
       case 'devices.command':
         return json(
           await commandDevice(db, tuya, user.id, {
@@ -211,6 +262,7 @@ Deno.serve(async (req) => {
             commands: body.commands as Command[],
             source,
             target: body.target as string | undefined,
+            via: body.via === 'properties' ? 'properties' : 'standard',
           }),
         );
       case 'devices.logs': {

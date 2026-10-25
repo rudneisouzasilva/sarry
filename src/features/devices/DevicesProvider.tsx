@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
 import { useToast } from '@/components/Toast';
 import { useSession } from '@/features/auth/SessionProvider';
-import type { Command, CommandSource, Device } from '@/types';
+import type { Command, CommandSource, CommandVia, Device } from '@/types';
 
 type DevicesState = {
   devices: Device[];
@@ -15,7 +15,11 @@ type DevicesState = {
   error: string | null;
   fetchedAt: string | null;
   refresh: (force?: boolean, silent?: boolean) => Promise<void>;
-  command: (device: Device, commands: Command[], opts?: { source?: CommandSource; label?: string }) => Promise<boolean>;
+  command: (
+    device: Device,
+    commands: Command[],
+    opts?: { source?: CommandSource; label?: string; via?: CommandVia },
+  ) => Promise<boolean>;
 };
 
 const Ctx = createContext<DevicesState | null>(null);
@@ -87,7 +91,11 @@ export function DevicesProvider({ children }: { children: ReactNode }) {
       setDevices((list) => list.map((d) => (d.id === device.id ? applyCommands(d, commands) : d)));
       pending.current += 1;
       try {
-        await api.command(device.id, commands, { source: opts.source ?? 'app', target: opts.label ?? device.name });
+        await api.command(device.id, commands, {
+          source: opts.source ?? 'app',
+          target: opts.label ?? device.name,
+          via: opts.via,
+        });
         return true;
       } catch (err) {
         // reverte o estado otimista e avisa

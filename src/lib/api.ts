@@ -5,6 +5,7 @@ import type {
   Automation,
   Command,
   CommandSource,
+  CommandVia,
   Device,
   DeviceSpec,
   QuickAction,
@@ -29,8 +30,9 @@ async function call<T>(action: string, params: Record<string, unknown> = {}): Pr
 export const api = {
   devices: (force = false) => call<{ devices: Device[]; fetchedAt: string }>('devices.list', { force }),
   spec: (id: string) => call<DeviceSpec>('devices.spec', { id }),
-  command: (id: string, commands: Command[], opts: { source?: CommandSource; target?: string } = {}) =>
+  command: (id: string, commands: Command[], opts: { source?: CommandSource; target?: string; via?: CommandVia } = {}) =>
     call<{ ok: true }>('devices.command', { id, commands, ...opts }),
+  shadow: (id: string, codes?: string[]) => call<Record<string, unknown>>('devices.shadow', { id, codes }),
   logs: (id: string, hours = 24) => call<unknown>('devices.logs', { id, hours }),
   scenes: (force = false) => call<{ scenes: Scene[] }>('scenes.list', { force }),
   runScene: (scene: Scene, source: CommandSource = 'app') =>
