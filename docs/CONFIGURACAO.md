@@ -186,6 +186,13 @@ de tela. O app baixa e aplica sozinho ao abrir (ou ao voltar para ele, a cada 15
 Mudanças nativas (novo módulo, ícone, permissões) ainda exigem um APK novo: nesse caso, suba
 `version` em `app.config.ts` antes de gerar o APK.
 
+**Controle local (só no APK de Android)**: no Wi-Fi de casa, o app manda os comandos direto para
+os aparelhos (protocolo local da Tuya, o mesmo do Smart Life), o que deixa a resposta quase
+instantânea. Ele ouve os anúncios dos aparelhos na rede a cada minuto enquanto está aberto; fora de
+casa, na web ou se a rede local falhar, o comando segue pela nuvem como antes. As chaves locais
+vêm da Edge Function (só para membros logados) e ficam no armazenamento seguro do celular; saem
+de lá ao sair da conta. Os comandos locais continuam no histórico (`command_log.timing.via = 'lan'`).
+
 ### 4.2 Notificações push (Android)
 
 O push remoto no Android precisa de um projeto Firebase gratuito:

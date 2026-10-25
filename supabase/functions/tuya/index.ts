@@ -16,6 +16,7 @@ import {
   sanitize,
   setAutomation,
   fetchTuyaDevices,
+  type TuyaDevice,
 } from '../_shared/core.ts';
 
 type Body = Record<string, unknown> & { action?: string };
@@ -148,20 +149,30 @@ async function commandDevice(
   db: ReturnType<typeof adminClient>,
   tuya: TuyaClient,
   userId: string,
-  params: { id: string; commands: Command[]; source?: Source; target?: string; via?: 'standard' | 'properties' },
+  params: {
+    id: string;
+    commands: Command[];
+    source?: Source;
+    target?: string;
+    via?: 'standard' | 'properties';
+    // já executado pelo app na rede local: aqui só registra (histórico e uso)
+    local?: { ms: number };
+  },
   timer = new Timer(),
   prefetched?: Promise<DeviceSpecDTO | null>,
 ) {
   const { id, commands } = params;
   if (!id || !Array.isArray(commands) || !commands.length) throw new HttpError(400, 'Comando inválido');
   let error: string | null = null;
-  try {
-    await sendCommands(tuya, id, commands, params.via, timer, prefetched);
-  } catch (err) {
-    error = err instanceof Error ? err.message : String(err);
+  if (!params.local) {
+    try {
+      await sendCommands(tuya, id, commands, params.via, timer, prefetched);
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    }
+    timer.mark('tuya');
   }
-  timer.mark('tuya');
-  const timing = timer.summary();
+  const timing = params.local ? { via: 'lan', lan: Math.round(Number(params.local.ms) || 0) } : timer.summary();
   const log = db.from('command_log').insert({
     timing,
     user_id: userId,
@@ -261,6 +272,53 @@ async function runSceneLogged(
   return { ok: true, message: `Cena ${name} executada` };
 }
 
+// Controle local (APK): chave local de cada aparelho, hub dos Zigbee e o número de cada DP.
+// Só sai daqui para um membro logado; o app guarda no armazenamento seguro do celular.
+const DP_ALIASES: Record<string, string[]> = {
+  switch: ['Power', 'power', 'switch_on'],
+  mode_eco: ['eco'],
+  lock: ['child_lock'],
+  backlight_switch: ['switch_backlight'],
+};
+
+async function lanConfig(tuya: TuyaClient) {
+  const list = await tuya.request<TuyaDevice[]>('GET', `/v1.0/users/${tuya.uid}/devices`);
+  const gateways = list.filter((d) => d.category?.startsWith('wg'));
+  const parent = new Map<string, string>();
+  await Promise.all(
+    gateways.map(async (gw) => {
+      try {
+        const subs = await tuya.request<{ id: string }[]>('GET', `/v1.0/devices/${gw.id}/sub-devices`);
+        for (const s of subs ?? []) parent.set(s.id, gw.id);
+      } catch {
+        // sem a lista, um hub único continua valendo para todos os Zigbee
+      }
+    }),
+  );
+  const devices = await Promise.all(
+    list.map(async (d) => {
+      if (!d.local_key) return null;
+      const dps: Record<string, number> = {};
+      try {
+        const res = await tuya.request<{ model: string }>('GET', `/v2.0/cloud/thing/${d.id}/model`);
+        const model = parseValues(res.model) as { services?: { properties?: { code: string; abilityId: number }[] }[] };
+        for (const p of (model.services ?? []).flatMap((s) => s.properties ?? [])) dps[p.code] = p.abilityId;
+      } catch {
+        return null;
+      }
+      for (const [code, names] of Object.entries(DP_ALIASES)) {
+        const hit = names.find((n) => dps[n] != null);
+        if (dps[code] == null && hit) dps[code] = dps[hit];
+      }
+      const nodeId = typeof d.node_id === 'string' && d.sub ? d.node_id : undefined;
+      const gatewayId = nodeId ? (parent.get(d.id) ?? (gateways.length === 1 ? gateways[0].id : undefined)) : undefined;
+      if (nodeId && !gatewayId) return null;
+      return { id: d.id, localKey: d.local_key, nodeId, gatewayId, dps };
+    }),
+  );
+  return devices.filter(Boolean);
+}
+
 async function diagnostics(tuya: TuyaClient) {
   const raw = await fetchTuyaDevices(tuya, true);
   const devices = [];
@@ -308,7 +366,7 @@ Deno.serve(async (req) => {
     // comando: conexão com a Tuya, token e especificação começam junto com a conferência do login.
     // Nada é enviado ao aparelho antes de o login ser validado.
     let prefetched: Promise<DeviceSpecDTO | null> | undefined;
-    if (body.action === 'devices.command' && body.id && req.headers.get('Authorization')) {
+    if (body.action === 'devices.command' && body.id && !body.local && req.headers.get('Authorization')) {
       const spec = allStandard(body.commands as Command[]) ? null : getSpec(tuya, String(body.id)).catch(() => null);
       prefetched = Promise.all([spec, tuya.warm()]).then(([s]) => s);
     }
@@ -321,6 +379,8 @@ Deno.serve(async (req) => {
         const devices: DeviceDTO[] = await loadDevices(db, tuya, Boolean(body.force));
         return json({ devices, fetchedAt: new Date().toISOString() });
       }
+      case 'devices.lan':
+        return json({ devices: await lanConfig(tuya) });
       case 'devices.spec':
         return json(await getSpec(tuya, String(body.id)));
       case 'devices.shadow':
@@ -333,6 +393,7 @@ Deno.serve(async (req) => {
             source,
             target: body.target as string | undefined,
             via: body.via === 'properties' ? 'properties' : 'standard',
+            local: body.local ? { ms: Number((body.local as { ms?: unknown }).ms) || 0 } : undefined,
           }, timer, prefetched),
         );
       case 'devices.logs': {

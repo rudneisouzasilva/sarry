@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppState } from 'react-native';
 import { api } from '@/lib/api';
+import { sendLocal, watchLan } from '@/lib/lan';
 import { haptic } from '@/lib/haptics';
 import { useToast } from '@/components/Toast';
 import { useSession } from '@/features/auth/SessionProvider';
@@ -85,17 +86,31 @@ export function DevicesProvider({ children }: { children: ReactNode }) {
     return () => sub.remove();
   }, [session, locked, refresh]);
 
+  // controle local (APK): procura os aparelhos na rede enquanto o app está aberto
+  useEffect(() => {
+    if (!session || locked) return;
+    let stop = AppState.currentState === 'active' ? watchLan() : () => {};
+    const sub = AppState.addEventListener('change', (s) => {
+      stop();
+      stop = s === 'active' ? watchLan() : () => {};
+    });
+    return () => {
+      sub.remove();
+      stop();
+    };
+  }, [session, locked]);
+
   const command = useCallback<DevicesState['command']>(
     async (device, commands, opts = {}) => {
       const before = devices.find((d) => d.id === device.id) ?? device;
       setDevices((list) => list.map((d) => (d.id === device.id ? applyCommands(d, commands) : d)));
       pending.current += 1;
+      const meta = { source: opts.source ?? 'app', target: opts.label ?? device.name, via: opts.via } as const;
       try {
-        await api.command(device.id, commands, {
-          source: opts.source ?? 'app',
-          target: opts.label ?? device.name,
-          via: opts.via,
-        });
+        // no Wi-Fi de casa vai direto ao aparelho; o servidor só registra no histórico
+        const local = await sendLocal(device.id, commands);
+        if (local) api.command(device.id, commands, { ...meta, local }).catch(() => {});
+        else await api.command(device.id, commands, meta);
         return true;
       } catch (err) {
         // reverte o estado otimista e avisa

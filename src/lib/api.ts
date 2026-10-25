@@ -11,6 +11,7 @@ import type {
   QuickAction,
   Scene,
 } from '@/types';
+import type { LanDevice } from '@/lib/lan';
 
 export class ApiError extends Error {}
 
@@ -30,8 +31,13 @@ async function call<T>(action: string, params: Record<string, unknown> = {}): Pr
 export const api = {
   devices: (force = false) => call<{ devices: Device[]; fetchedAt: string }>('devices.list', { force }),
   spec: (id: string) => call<DeviceSpec>('devices.spec', { id }),
-  command: (id: string, commands: Command[], opts: { source?: CommandSource; target?: string; via?: CommandVia } = {}) =>
-    call<{ ok: true }>('devices.command', { id, commands, ...opts }),
+  command: (
+    id: string,
+    commands: Command[],
+    opts: { source?: CommandSource; target?: string; via?: CommandVia; local?: { ms: number } } = {},
+  ) => call<{ ok: true }>('devices.command', { id, commands, ...opts }),
+  // chaves do controle local (só no APK; ficam no armazenamento seguro do celular)
+  lanConfig: () => call<{ devices: LanDevice[] }>('devices.lan'),
   shadow: (id: string, codes?: string[]) => call<Record<string, unknown>>('devices.shadow', { id, codes }),
   logs: (id: string, hours = 24) => call<unknown>('devices.logs', { id, hours }),
   scenes: (force = false) => call<{ scenes: Scene[] }>('scenes.list', { force }),

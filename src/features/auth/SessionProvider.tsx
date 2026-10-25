@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { AppState } from 'react-native';
 import { authenticate, biometricsEnabled } from '@/lib/biometrics';
 import { supabase } from '@/lib/supabase';
+import { clearLanConfig } from '@/lib/lan';
 
 type SessionState = {
   session: Session | null;
@@ -61,6 +62,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    await clearLanConfig();
     await supabase.auth.signOut();
     setLocked(false);
   };
