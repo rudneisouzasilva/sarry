@@ -1,5 +1,8 @@
 import type { ExpoConfig } from 'expo/config';
 
+// ID do projeto no expo.dev (Projects > sarry > Project ID). Cole aqui ou defina EAS_PROJECT_ID.
+const EAS_PROJECT_ID = process.env.EAS_PROJECT_ID || '';
+
 const config: ExpoConfig = {
   name: 'Sarry',
   slug: 'sarry',
@@ -57,7 +60,7 @@ const config: ExpoConfig = {
   },
   extra: {
     eas: {
-      projectId: process.env.EAS_PROJECT_ID,
+      ...(EAS_PROJECT_ID ? { projectId: EAS_PROJECT_ID } : {}),
     },
   },
 };
