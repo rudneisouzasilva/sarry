@@ -19,7 +19,7 @@ export default function ArCondicionado() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { loading, refreshing, refresh } = useDevices();
   const device = useDevice(id);
-  const { caps, spec, isOn, target, current, setPower, nudgeTemp, send, value } = useAc(device, 'app', { withShadow: true });
+  const { caps, spec, isOn, target, current, setPower, nudgeTemp, setTemp, previewTemp, send, value } = useAc(device, 'app', { withShadow: true });
 
   if (!device) {
     return (
@@ -43,7 +43,18 @@ export default function ArCondicionado() {
       ) : null}
 
       <Card className="items-center py-6">
-        <Dial value={target} min={temp ? temp.min / 10 ** temp.scale : 16} max={temp ? temp.max / 10 ** temp.scale : 30} current={current} active={isOn} unit={temp?.unit} />
+        <Dial
+          value={target}
+          min={temp ? temp.min / 10 ** temp.scale : 16}
+          max={temp ? temp.max / 10 ** temp.scale : 30}
+          step={temp ? Math.max(temp.step, 10 ** temp.scale) / 10 ** temp.scale : 1}
+          current={current}
+          active={isOn}
+          unit={temp?.unit}
+          disabled={disabled || !temp}
+          onChange={previewTemp}
+          onCommit={(v) => setTemp(v)}
+        />
         <View className="mt-4 w-full max-w-[360px] flex-row items-center justify-between px-4">
           <IconButton
             icon={Minus}

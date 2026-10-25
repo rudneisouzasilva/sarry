@@ -72,23 +72,35 @@ export function useAc(device: Device | undefined, source: CommandSource = 'app',
 
   const setPower = (on: boolean) => caps?.power && send(caps.power.code, on, caps.power.via);
 
-  const nudgeTemp = (dir: 1 | -1) => {
-    if (!caps?.temp || target === null) return;
-    const { min, max, step, scale, code, via } = caps.temp;
+  // agenda o envio da temperatura (em graus); delay 0 envia já, como ao soltar o dial
+  const setTemp = (deg: number, delay = 0) => {
+    if (!caps?.temp) return;
+    const { min, max, scale, code, via } = caps.temp;
     const factor = 10 ** scale;
-    // passo de 1 grau (ou o passo mínimo do aparelho, se maior)
-    const stepRaw = Math.max(step, factor);
-    const raw = Math.round(target * factor) + dir * stepRaw;
-    const clamped = Math.min(max, Math.max(min, raw));
+    const clamped = Math.min(max, Math.max(min, Math.round(deg * factor)));
     setPendingTemp(clamped / factor);
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(async () => {
       await send(code, clamped, via);
       setPendingTemp(null);
-    }, TEMP_DEBOUNCE_MS);
+    }, delay);
+  };
+
+  // só mostra o valor enquanto o dedo arrasta o dial, sem enviar
+  const previewTemp = (deg: number) => {
+    if (timer.current) clearTimeout(timer.current);
+    setPendingTemp(deg);
+  };
+
+  const nudgeTemp = (dir: 1 | -1) => {
+    if (!caps?.temp || target === null) return;
+    const { step, scale } = caps.temp;
+    const factor = 10 ** scale;
+    // passo de 1 grau (ou o passo mínimo do aparelho, se maior)
+    setTemp(target + (dir * Math.max(step, factor)) / factor, TEMP_DEBOUNCE_MS);
   };
 
   useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
 
-  return { caps, spec, isOn, target, current, setPower, nudgeTemp, send, value };
+  return { caps, spec, isOn, target, current, setPower, nudgeTemp, setTemp, previewTemp, send, value };
 }
