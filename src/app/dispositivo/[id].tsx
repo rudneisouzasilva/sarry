@@ -101,6 +101,7 @@ export default function EditarDispositivo() {
             options={[
               { value: 'light', label: 'Luz' },
               { value: 'ac', label: 'Ar' },
+              { value: 'fan', label: 'Ventilador' },
               { value: 'hub', label: 'Hub' },
               { value: 'other', label: 'Outro' },
             ]}

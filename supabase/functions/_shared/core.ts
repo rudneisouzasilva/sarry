@@ -23,7 +23,7 @@ type DeviceRow = {
   tuya_name: string | null;
   custom_name: string | null;
   room: string | null;
-  kind: 'light' | 'ac' | 'hub' | 'other';
+  kind: 'light' | 'ac' | 'fan' | 'hub' | 'other';
   category: string | null;
   product_name: string | null;
   power_w: number | null;
@@ -57,10 +57,12 @@ export type DeviceDTO = {
 
 const LIGHT_CATEGORIES = new Set(['kg', 'cz', 'pc', 'tdq', 'dj', 'dd', 'xdd', 'fwd', 'dc', 'tgkg', 'tgq', 'qjdcz', 'clkg']);
 const AC_CATEGORIES = new Set(['kt', 'ktkzq', 'infrared_ac']);
+const FAN_CATEGORIES = new Set(['fskg', 'fs']);
 const HUB_CATEGORIES = new Set(['wg2', 'wg', 'wfcon', 'zigbee']);
 
 export function guessKind(category: string): DeviceRow['kind'] {
   if (AC_CATEGORIES.has(category)) return 'ac';
+  if (FAN_CATEGORIES.has(category)) return 'fan';
   if (HUB_CATEGORIES.has(category)) return 'hub';
   if (LIGHT_CATEGORIES.has(category)) return 'light';
   return 'other';
@@ -80,6 +82,12 @@ export function channelStates(kind: DeviceRow['kind'], status: Record<string, un
       .filter(([code, value]) => SWITCH_CODE.test(code) && typeof value === 'boolean')
       .sort(([a], [b]) => a.localeCompare(b, 'en', { numeric: true }))
       .map(([code, value]) => ({ code, isOn: value as boolean }));
+  }
+  if (kind === 'fan') {
+    // liga do ventilador e, se houver, a luz do ventilador
+    return ['switch_fan', 'switch_led']
+      .filter((code) => typeof status[code] === 'boolean')
+      .map((code) => ({ code, isOn: status[code] as boolean }));
   }
   if (kind === 'ac') {
     const code = AC_POWER_CODES.find((c) => typeof status[c] === 'boolean');

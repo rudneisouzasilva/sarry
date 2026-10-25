@@ -1,4 +1,4 @@
-export type DeviceKind = 'light' | 'ac' | 'hub' | 'other';
+export type DeviceKind = 'light' | 'ac' | 'fan' | 'hub' | 'other';
 
 export type Channel = {
   code: string;

@@ -20,7 +20,7 @@ import { supabase } from '@/lib/supabase';
 import { colors } from '@/theme/colors';
 import type { Settings } from '@/types';
 
-const KIND_LABEL = { light: 'Luz', ac: 'Ar-condicionado', hub: 'Hub', other: 'Outro' } as const;
+const KIND_LABEL = { light: 'Luz', ac: 'Ar-condicionado', fan: 'Ventilador', hub: 'Hub', other: 'Outro' } as const;
 
 function parseNumber(text: string) {
   const n = Number(text.replace(',', '.'));

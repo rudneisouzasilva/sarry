@@ -130,7 +130,7 @@ async function commandDevice(
 
   await tuya.invalidate('devices');
   // registra na hora a mudança de liga/desliga, para o histórico de uso ficar exato
-  const switches = commands.filter((c) => typeof c.value === 'boolean' && /^(switch(_led)?(_\d+)?|power)$/i.test(c.code));
+  const switches = commands.filter((c) => typeof c.value === 'boolean' && /^(switch(_led|_fan)?(_\d+)?|power)$/i.test(c.code));
   if (switches.length) {
     await recordChanges(
       db,

@@ -4,6 +4,7 @@ import { Stethoscope } from 'lucide-react-native';
 import { AcCard } from '@/components/AcCard';
 import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
+import { FanCard } from '@/components/FanCard';
 import { Grid } from '@/components/Grid';
 import { SectionTitle } from '@/components/Header';
 import { LightTile } from '@/components/LightTile';
@@ -24,6 +25,7 @@ export default function Inicio() {
 
   const hub = devices.find((d) => d.kind === 'hub');
   const acs = devices.filter((d) => d.kind === 'ac' && !d.hidden);
+  const fans = devices.filter((d) => d.kind === 'fan' && !d.hidden);
   const lights = lightsOf(devices);
   const lightsOn = lights.filter((l) => l.isOn).length;
   const online = devices.filter((d) => d.online).length;
@@ -84,10 +86,13 @@ export default function Inicio() {
 
       {loading ? <Loading /> : null}
 
-      {acs.length ? <SectionTitle>Clima</SectionTitle> : null}
+      {acs.length || fans.length ? <SectionTitle>Clima</SectionTitle> : null}
       <View className="gap-3">
         {acs.map((d) => (
           <AcCard key={d.id} device={d} />
+        ))}
+        {fans.map((d) => (
+          <FanCard key={d.id} device={d} />
         ))}
       </View>
 
