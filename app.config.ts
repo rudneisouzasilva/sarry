@@ -5,7 +5,9 @@ const EAS_PROJECT_ID = process.env.EAS_PROJECT_ID || '25e4f3cc-b69b-41f9-96fe-48
 
 const config: ExpoConfig = {
   name: 'Sarry',
-  slug: 'sarry',
+  // precisam bater com o projeto no expo.dev (expo.dev/accounts/rudneisouzas-team/projects/rudnei)
+  owner: 'rudneisouzas-team',
+  slug: 'rudnei',
   scheme: 'sarry',
   version: '1.0.0',
   orientation: 'default',
