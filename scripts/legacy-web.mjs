@@ -19,6 +19,19 @@ const polyfills = await build({
       "import 'fast-text-encoding';",
       "import ResizeObserver from 'resize-observer-polyfill';",
       'if (!window.ResizeObserver) window.ResizeObserver = ResizeObserver;',
+      // crypto.randomUUID só existe a partir do Safari 15.4
+      'var c = window.crypto || window.msCrypto;',
+      'if (c && c.getRandomValues && !c.randomUUID) c.randomUUID = function () {',
+      '  var b = c.getRandomValues(new Uint8Array(16)); b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128;',
+      '  var h = []; for (var i = 0; i < 16; i++) h.push((b[i] + 256).toString(16).slice(1));',
+      '  return h.slice(0, 4).join("") + "-" + h.slice(4, 6).join("") + "-" + h.slice(6, 8).join("") + "-" + h.slice(8, 10).join("") + "-" + h.slice(10).join("");',
+      '};',
+      // MediaQueryList.addEventListener só existe a partir do Safari 14
+      'var mq = window.matchMedia && window.matchMedia("all");',
+      'if (mq && !mq.addEventListener && window.MediaQueryList) {',
+      '  MediaQueryList.prototype.addEventListener = function (t, f) { this.addListener(f); };',
+      '  MediaQueryList.prototype.removeEventListener = function (t, f) { this.removeListener(f); };',
+      '}',
       // detecta gap em flexbox; sem suporte, o global.css troca por margens
       'document.addEventListener("DOMContentLoaded", function () {',
       '  var f = document.createElement("div"); f.style.display = "flex"; f.style.flexDirection = "column"; f.style.rowGap = "1px";',
@@ -66,6 +79,9 @@ const gapCss = Object.entries(GAPS)
   )
   .join('');
 
+// Mostra na tela qualquer erro de carregamento (aparelhos antigos não têm console à mão)
+const errorOverlay = `<script>(function(){function show(m){var d=document.getElementById('sarry-erro');if(!d){d=document.createElement('pre');d.id='sarry-erro';d.style.cssText='position:fixed;left:0;right:0;bottom:0;max-height:50%;overflow:auto;margin:0;padding:12px;background:#300;color:#fff;font:12px monospace;z-index:99999;white-space:pre-wrap';(document.body||document.documentElement).appendChild(d);}d.textContent+=m+'\\n';}window.onerror=function(msg,src,line,col,err){show('Erro: '+msg+' ('+(src||'').split('/').pop()+':'+line+':'+col+')'+(err&&err.stack?'\\n'+err.stack:''));};window.addEventListener('unhandledrejection',function(e){var r=e.reason;show('Promise: '+(r&&(r.stack||r.message)||r));});})();</script>`;
+
 writeFileSync(join(JS_DIR, 'polyfills.js'), polyfillCode);
 for (const html of readdirSync(DIST).filter((f) => f.endsWith('.html'))) {
   const path = join(DIST, html);
@@ -75,6 +91,7 @@ for (const html of readdirSync(DIST).filter((f) => f.endsWith('.html'))) {
   writeFileSync(
     path,
     src
+      .replace('<head>', `<head>${errorOverlay}`)
       .replace('</head>', `<style>${gapCss}</style></head>`)
       .replace('<script src="/_expo/', '<script src="/_expo/static/js/web/polyfills.js"></script><script src="/_expo/'),
   );
