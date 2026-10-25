@@ -20,6 +20,8 @@ export class Timer {
       total: Math.round(performance.now() - this.start),
       cold: this.cold,
       region: Deno.env.get('SB_REGION') ?? null,
+      // região do banco, pelo endereço do pooler (ex.: aws-0-us-east-1.pooler.supabase.com)
+      db: (Deno.env.get('SUPABASE_DB_URL') ?? '').match(/aws-\d+-([a-z]+-[a-z]+-\d)/)?.[1] ?? null,
     };
   }
 }

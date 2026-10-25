@@ -114,10 +114,11 @@ async function sendCommands(
   commands: Command[],
   via: 'standard' | 'properties' = 'standard',
   timer?: Timer,
+  prefetched?: Promise<DeviceSpecDTO | null>,
 ) {
   if (via === 'properties') return issueProperties(tuya, id, commands);
   // códigos fora do conjunto padrão (ex.: luz e sentido do ventilador) vão pelo modelo de propriedades
-  const spec = await getSpec(tuya, id).catch(() => null);
+  const spec = await (prefetched ?? getSpec(tuya, id).catch(() => null));
   timer?.mark('spec');
   if (spec) {
     const standard = new Set(spec.functions.map((f) => f.code));
@@ -142,12 +143,13 @@ async function commandDevice(
   userId: string,
   params: { id: string; commands: Command[]; source?: Source; target?: string; via?: 'standard' | 'properties' },
   timer = new Timer(),
+  prefetched?: Promise<DeviceSpecDTO | null>,
 ) {
   const { id, commands } = params;
   if (!id || !Array.isArray(commands) || !commands.length) throw new HttpError(400, 'Comando inválido');
   let error: string | null = null;
   try {
-    await sendCommands(tuya, id, commands, params.via, timer);
+    await sendCommands(tuya, id, commands, params.via, timer, prefetched);
   } catch (err) {
     error = err instanceof Error ? err.message : String(err);
   }
@@ -294,10 +296,17 @@ Deno.serve(async (req) => {
   const db = adminClient();
   const timer = new Timer();
   try {
-    const user = await requireMember(req, db);
-    timer.mark('auth');
     const body = (await req.json().catch(() => ({}))) as Body;
     const tuya = new TuyaClient(db);
+    // comando: conexão com a Tuya, token e especificação começam junto com a conferência do login.
+    // Nada é enviado ao aparelho antes de o login ser validado.
+    let prefetched: Promise<DeviceSpecDTO | null> | undefined;
+    if (body.action === 'devices.command' && body.id && req.headers.get('Authorization')) {
+      const spec = getSpec(tuya, String(body.id)).catch(() => null);
+      prefetched = Promise.all([spec, tuya.warm()]).then(([s]) => s);
+    }
+    const user = await requireMember(req, db);
+    timer.mark('auth');
     const source = (body.source as Source) ?? 'app';
 
     switch (body.action) {
@@ -317,7 +326,7 @@ Deno.serve(async (req) => {
             source,
             target: body.target as string | undefined,
             via: body.via === 'properties' ? 'properties' : 'standard',
-          }, timer),
+          }, timer, prefetched),
         );
       case 'devices.logs': {
         const hours = Math.min(Number(body.hours) || 24, 24 * 7);

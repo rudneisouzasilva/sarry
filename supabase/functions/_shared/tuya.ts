@@ -140,6 +140,16 @@ export class TuyaClient {
     return sharedToken.access_token;
   }
 
+  // Adianta a conexão com a Tuya e a leitura do token enquanto o login é conferido
+  async warm() {
+    await Promise.all([
+      fetch(this.baseUrl, { method: 'HEAD' })
+        .then((r) => r.body?.cancel())
+        .catch(() => {}),
+      this.getAccessToken().catch(() => {}),
+    ]);
+  }
+
   async request<T>(
     method: 'GET' | 'POST' | 'PUT' | 'DELETE',
     path: string,
