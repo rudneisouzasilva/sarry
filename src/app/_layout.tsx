@@ -4,6 +4,7 @@ import { Sora_600SemiBold, Sora_700Bold } from '@expo-google-fonts/sora';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { NavigationBar } from 'expo-navigation-bar';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Platform, View } from 'react-native';
@@ -39,6 +40,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />
+      {Platform.OS === 'android' ? <NavigationBar hidden style="light" /> : null}
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
         {isConfigured ? (
           <SessionProvider>

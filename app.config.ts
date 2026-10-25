@@ -44,6 +44,8 @@ const config: ExpoConfig = {
   plugins: [
     ['expo-router', { asyncRoutes: { web: false } }],
     'expo-status-bar',
+    // barra de navegação do Android escondida; volta ao deslizar de baixo para cima
+    ['expo-navigation-bar', { hidden: true, barStyle: 'light' }],
     'expo-font',
     [
       'expo-splash-screen',
