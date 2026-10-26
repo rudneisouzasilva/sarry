@@ -312,7 +312,8 @@ export class TuyaSession {
       const got = (json.dps ?? inner.dps) as Record<string, unknown> | undefined;
       const fromCid = (json.cid ?? inner.cid) as string | undefined;
       if (!got || (cid && fromCid && fromCid !== cid)) continue;
-      if (wanted.some((k) => k in got)) return;
+      // o valor precisa bater: um STATUS atrasado de um comando anterior não confirma este
+      if (wanted.some((k) => got[k] === dps[k])) return;
     }
   }
 }

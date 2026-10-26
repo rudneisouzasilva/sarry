@@ -156,7 +156,7 @@ async function commandDevice(
     target?: string;
     via?: 'standard' | 'properties';
     // já executado pelo app na rede local: aqui só registra (histórico e uso)
-    local?: { ms: number };
+    local?: { ms: number; steps?: Record<string, number> };
     lan?: { ms: number; reason: string };
   },
   timer = new Timer(),
@@ -174,7 +174,7 @@ async function commandDevice(
     timer.mark('tuya');
   }
   const timing = params.local
-    ? { via: 'lan', lan: Math.round(Number(params.local.ms) || 0) }
+    ? { via: 'lan', lan: Math.round(Number(params.local.ms) || 0), ...cleanSteps(params.local.steps) }
     : {
         ...timer.summary(),
         ...(params.lan ? { lan_ms: Math.round(Number(params.lan.ms) || 0), lan_falha: String(params.lan.reason).slice(0, 200) } : {}),
@@ -210,6 +210,16 @@ async function commandDevice(
   // o app só recarrega a lista 2,5 s depois, então limpar o cache também fica para depois da resposta
   inBackground(Promise.all([after, tuya.invalidate('devices').catch((err) => console.error('cache', err))]));
   return { ok: true, timing };
+}
+
+// Etapas do comando local (ms), só números e com nomes curtos
+function cleanSteps(steps: unknown) {
+  if (!steps || typeof steps !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(steps as Record<string, unknown>)
+      .filter(([k, v]) => /^[a-z]{1,12}$/.test(k) && typeof v === 'number')
+      .slice(0, 8),
+  );
 }
 
 // Termina um trabalho depois de responder ao app (EdgeRuntime.waitUntil); fora do Supabase, espera
@@ -399,7 +409,7 @@ Deno.serve(async (req) => {
             source,
             target: body.target as string | undefined,
             via: body.via === 'properties' ? 'properties' : 'standard',
-            local: body.local ? { ms: Number((body.local as { ms?: unknown }).ms) || 0 } : undefined,
+            local: body.local as { ms: number; steps?: Record<string, number> } | undefined,
             lan: body.lan as { ms: number; reason: string } | undefined,
           }, timer, prefetched),
         );

@@ -25,7 +25,7 @@ const SEEN_FRESH_MS = 3 * 60_000; // só tenta local se o aparelho anunciou na r
 const SCAN_EVERY_MS = 60_000;
 const SCAN_MS = 6_000;
 const CONNECT_MS = 700;
-const COMMAND_MS = 2_500;
+const COMMAND_MS = 3_000;
 
 let config: { at: number; devices: LanDevice[] } | null = null;
 let syncing: Promise<void> | null = null;
@@ -151,7 +151,22 @@ function serialize<T>(key: string, work: () => Promise<T>): Promise<T> {
   return next;
 }
 
-export type LocalResult = { ok: true; ms: number } | { ok: false; ms: number; reason: string };
+export type LocalResult =
+  | { ok: true; ms: number; steps: Record<string, number> }
+  | { ok: false; ms: number; reason: string };
+
+// Conexão aberta por aparelho/hub, reaproveitada por alguns segundos: poupa a conexão e a troca de chaves
+type Open = { session: TuyaSession; io: Transport & { close(): void }; ip: string; idle?: ReturnType<typeof setTimeout> };
+const conns = new Map<string, Open>();
+const IDLE_MS = 20_000;
+
+function drop(hostId: string) {
+  const c = conns.get(hostId);
+  if (!c) return;
+  conns.delete(hostId);
+  if (c.idle) clearTimeout(c.idle);
+  c.io.close();
+}
 
 // Tenta pela rede local. ok=false: não deu (o app usa a nuvem e registra o motivo).
 export async function sendLocal(deviceId: string, commands: Command[]): Promise<LocalResult | null> {
@@ -160,23 +175,51 @@ export async function sendLocal(deviceId: string, commands: Command[]): Promise<
   const p = plan(deviceId, commands);
   if (typeof p === 'string') return { ok: false, ms: 0, reason: p };
   const started = Date.now();
+  const steps: Record<string, number> = {};
   let step = 'conexão';
+  const mark = (name: string, since: number) => (steps[name] = Date.now() - since);
   try {
     await serialize(p.hostId, async () => {
       const deadline = Date.now() + COMMAND_MS;
-      const io = await open(p.host.ip);
-      try {
+      const fresh = async () => {
+        drop(p.hostId);
+        let t = Date.now();
+        step = 'conexão';
+        const io = await open(p.host.ip);
+        mark('conexao', t);
         const session = new TuyaSession(io, p.key, p.host.version, p.hostId);
+        t = Date.now();
         step = 'troca de chaves';
         await session.negotiate(deadline);
+        mark('chaves', t);
+        const c: Open = { session, io, ip: p.host.ip };
+        conns.set(p.hostId, c);
+        return c;
+      };
+      let c = conns.get(p.hostId);
+      const reused = Boolean(c && c.ip === p.host.ip);
+      if (!c || !reused) c = await fresh();
+      if (c.idle) clearTimeout(c.idle);
+      step = 'comando';
+      let t = Date.now();
+      try {
+        await c.session.control(p.dps, reused ? Math.min(deadline, Date.now() + 1500) : deadline, p.cid);
+      } catch (err) {
+        // a conexão guardada pode ter caído (o aparelho fecha as ociosas): tenta uma vez com uma nova
+        if (!reused) throw err;
+        c = await fresh();
         step = 'comando';
-        await session.control(p.dps, deadline, p.cid);
-      } finally {
-        io.close();
+        t = Date.now();
+        await c.session.control(p.dps, deadline, p.cid);
       }
+      mark('comando', t);
+      steps.reuso = reused ? 1 : 0;
+      const kept = c;
+      kept.idle = setTimeout(() => conns.get(p.hostId) === kept && drop(p.hostId), IDLE_MS);
     });
-    return { ok: true, ms: Date.now() - started };
+    return { ok: true, ms: Date.now() - started, steps };
   } catch (err) {
+    drop(p.hostId);
     // até a próxima varredura, esse aparelho vai pela nuvem; as chaves podem ter mudado (repareamento)
     seen.delete(p.hostId);
     if (Date.now() - lastResync > 10 * 60_000) {

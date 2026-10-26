@@ -38,7 +38,7 @@ export const api = {
       source?: CommandSource;
       target?: string;
       via?: CommandVia;
-      local?: { ms: number };
+      local?: { ms: number; steps?: Record<string, number> };
       // tentativa local que não deu: motivo e tempo, para o histórico
       lan?: { ms: number; reason: string };
     } = {},
