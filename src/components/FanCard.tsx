@@ -21,10 +21,10 @@ function nearestSpeed(raw: unknown) {
   return SPEEDS.reduce((best, s) => (Math.abs(Number(s.value) - raw) < Math.abs(Number(best.value) - raw) ? s : best)).value;
 }
 
-// Sentido do motor: para a frente ventila, invertido exaure
+// Sentido do motor: neste ventilador, "reversal" ventila e "forward" exaure (conferido no aparelho)
 const DIRECTIONS = [
-  { value: 'forward', label: 'Ventilar' },
-  { value: 'reversal', label: 'Exaustor' },
+  { value: 'reversal', label: 'Ventilar' },
+  { value: 'forward', label: 'Exaustor' },
 ];
 
 // Ventilador de teto: liga/desliga, velocidade e sentido. A luz aparece junto das outras luzes.

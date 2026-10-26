@@ -157,6 +157,7 @@ async function commandDevice(
     via?: 'standard' | 'properties';
     // já executado pelo app na rede local: aqui só registra (histórico e uso)
     local?: { ms: number };
+    lan?: { ms: number; reason: string };
   },
   timer = new Timer(),
   prefetched?: Promise<DeviceSpecDTO | null>,
@@ -172,7 +173,12 @@ async function commandDevice(
     }
     timer.mark('tuya');
   }
-  const timing = params.local ? { via: 'lan', lan: Math.round(Number(params.local.ms) || 0) } : timer.summary();
+  const timing = params.local
+    ? { via: 'lan', lan: Math.round(Number(params.local.ms) || 0) }
+    : {
+        ...timer.summary(),
+        ...(params.lan ? { lan_ms: Math.round(Number(params.lan.ms) || 0), lan_falha: String(params.lan.reason).slice(0, 200) } : {}),
+      };
   const log = db.from('command_log').insert({
     timing,
     user_id: userId,
@@ -394,6 +400,7 @@ Deno.serve(async (req) => {
             target: body.target as string | undefined,
             via: body.via === 'properties' ? 'properties' : 'standard',
             local: body.local ? { ms: Number((body.local as { ms?: unknown }).ms) || 0 } : undefined,
+            lan: body.lan as { ms: number; reason: string } | undefined,
           }, timer, prefetched),
         );
       case 'devices.logs': {

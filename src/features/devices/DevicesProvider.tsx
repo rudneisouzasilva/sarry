@@ -109,8 +109,8 @@ export function DevicesProvider({ children }: { children: ReactNode }) {
       try {
         // no Wi-Fi de casa vai direto ao aparelho; o servidor só registra no histórico
         const local = await sendLocal(device.id, commands);
-        if (local) api.command(device.id, commands, { ...meta, local }).catch(() => {});
-        else await api.command(device.id, commands, meta);
+        if (local?.ok) api.command(device.id, commands, { ...meta, local: { ms: local.ms } }).catch(() => {});
+        else await api.command(device.id, commands, { ...meta, lan: local ? { ms: local.ms, reason: local.reason } : undefined });
         return true;
       } catch (err) {
         // reverte o estado otimista e avisa

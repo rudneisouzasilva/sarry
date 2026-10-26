@@ -14,4 +14,5 @@ export const syncLanConfig = async (_force = false) => {};
 export const clearLanConfig = async () => {};
 export const scanLan = async () => {};
 export const watchLan = () => () => {};
-export const sendLocal = async (_id: string, _commands: Command[]): Promise<{ ms: number } | null> => null;
+export type LocalResult = { ok: true; ms: number } | { ok: false; ms: number; reason: string };
+export const sendLocal = async (_id: string, _commands: Command[]): Promise<LocalResult | null> => null;

@@ -34,7 +34,14 @@ export const api = {
   command: (
     id: string,
     commands: Command[],
-    opts: { source?: CommandSource; target?: string; via?: CommandVia; local?: { ms: number } } = {},
+    opts: {
+      source?: CommandSource;
+      target?: string;
+      via?: CommandVia;
+      local?: { ms: number };
+      // tentativa local que não deu: motivo e tempo, para o histórico
+      lan?: { ms: number; reason: string };
+    } = {},
   ) => call<{ ok: true }>('devices.command', { id, commands, ...opts }),
   // chaves do controle local (só no APK; ficam no armazenamento seguro do celular)
   lanConfig: () => call<{ devices: LanDevice[] }>('devices.lan'),

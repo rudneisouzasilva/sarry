@@ -102,20 +102,24 @@ export function watchLan(): () => void {
 
 type Plan = { host: Seen; hostId: string; key: Bytes; cid?: string; dps: Dps };
 
-function plan(deviceId: string, commands: Command[]): Plan | null {
-  const device = config?.devices.find((d) => d.id === deviceId);
-  if (!device || !commands.length) return null;
+// Plano do envio local, ou o motivo de não dar (vai para o histórico, para diagnóstico)
+function plan(deviceId: string, commands: Command[]): Plan | string {
+  if (!config) return 'sem chaves locais';
+  const device = config.devices.find((d) => d.id === deviceId);
+  if (!device) return 'aparelho sem chave local';
+  if (!commands.length) return 'sem comandos';
   const hostId = device.nodeId && device.gatewayId ? device.gatewayId : device.id;
   const host = seen.get(hostId);
-  if (!host || Date.now() - host.at > SEEN_FRESH_MS) return null;
+  if (!host) return seen.size ? 'aparelho não encontrado na rede' : 'nenhum aparelho encontrado na rede';
+  if (Date.now() - host.at > SEEN_FRESH_MS) return 'anúncio na rede antigo';
   // a chave é a do aparelho que recebe a conexão (o hub, no caso dos Zigbee)
-  const keyOwner = hostId === device.id ? device : config?.devices.find((d) => d.id === hostId);
-  if (!keyOwner?.localKey) return null;
+  const keyOwner = hostId === device.id ? device : config.devices.find((d) => d.id === hostId);
+  if (!keyOwner?.localKey) return 'hub sem chave local';
   const dps: Dps = {};
   for (const c of commands) {
     const dp = device.dps[c.code];
     const ok = typeof c.value === 'boolean' || typeof c.value === 'number' || typeof c.value === 'string';
-    if (dp == null || !ok) return null;
+    if (dp == null || !ok) return `sem DP para ${c.code}`;
     dps[String(dp)] = c.value as boolean | number | string;
   }
   return { host, hostId, key: utf8(keyOwner.localKey), cid: hostId === device.id ? undefined : device.nodeId, dps };
@@ -147,33 +151,39 @@ function serialize<T>(key: string, work: () => Promise<T>): Promise<T> {
   return next;
 }
 
-// Tenta pela rede local. Devolve o tempo gasto, ou null se não deu (aí o app usa a nuvem).
-export async function sendLocal(deviceId: string, commands: Command[]): Promise<{ ms: number } | null> {
+export type LocalResult = { ok: true; ms: number } | { ok: false; ms: number; reason: string };
+
+// Tenta pela rede local. ok=false: não deu (o app usa a nuvem e registra o motivo).
+export async function sendLocal(deviceId: string, commands: Command[]): Promise<LocalResult | null> {
   if (!lanAvailable) return null;
   await loadConfig();
   const p = plan(deviceId, commands);
-  if (!p) return null;
+  if (typeof p === 'string') return { ok: false, ms: 0, reason: p };
   const started = Date.now();
+  let step = 'conexão';
   try {
     await serialize(p.hostId, async () => {
       const deadline = Date.now() + COMMAND_MS;
       const io = await open(p.host.ip);
       try {
         const session = new TuyaSession(io, p.key, p.host.version, p.hostId);
+        step = 'troca de chaves';
         await session.negotiate(deadline);
+        step = 'comando';
         await session.control(p.dps, deadline, p.cid);
       } finally {
         io.close();
       }
     });
-    return { ms: Date.now() - started };
-  } catch {
+    return { ok: true, ms: Date.now() - started };
+  } catch (err) {
     // até a próxima varredura, esse aparelho vai pela nuvem; as chaves podem ter mudado (repareamento)
     seen.delete(p.hostId);
     if (Date.now() - lastResync > 10 * 60_000) {
       lastResync = Date.now();
       syncLanConfig(true);
     }
-    return null;
+    const why = err instanceof Error ? err.message : String(err);
+    return { ok: false, ms: Date.now() - started, reason: `${step} (${p.host.version}): ${why}` };
   }
 }
