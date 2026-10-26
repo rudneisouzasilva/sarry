@@ -301,6 +301,29 @@ export class TuyaSession {
         : (gcm(this.realKey, this.localNonce.slice(0, 12)).encrypt(mixed).slice(0, 16) as Bytes);
   }
 
+  // Confere se a chave (e o id) são deste aparelho. 3.4/3.5: a troca de chaves já prova;
+  // 3.1-3.3: pede o status e vê se a resposta abre com a chave.
+  async probe(deadline: number): Promise<boolean> {
+    if (this.version === '3.4' || this.version === '3.5') {
+      await this.negotiate(deadline);
+      return true;
+    }
+    const t = String(Math.floor(Date.now() / 1000));
+    const body = { gwId: this.devId, devId: this.devId, uid: this.devId, t };
+    await this.io.write(this.encode(CMD.DP_QUERY, utf8(JSON.stringify(body))));
+    for (;;) {
+      const frame = await this.readFrame(deadline);
+      if (frame.cmd !== CMD.DP_QUERY && frame.cmd !== CMD.STATUS && frame.cmd !== CMD.CONTROL_NEW) continue;
+      if (!frame.payload.length) continue;
+      try {
+        const text = fromUtf8(this.open(frame));
+        if (text.includes('{') || text.includes('data unvalid')) return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+
   controlPayload(dps: Dps, cid?: string) {
     const t = Math.floor(Date.now() / 1000);
     // mesmos formatos do tinytuya (payload_dict: default, zigbee, v3.4/v3.5, zigbee_v3.4/v3.5)

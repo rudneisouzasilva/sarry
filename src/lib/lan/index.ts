@@ -18,12 +18,16 @@ export type LanDevice = {
 };
 
 type Seen = { ip: string; version: Version; at: number };
+type Probe = { ip: string; version: Version };
 
 const CONFIG_KEY = 'sarry.lan.config';
 const CONFIG_MAX_AGE = 12 * 3600_000;
-const SEEN_FRESH_MS = 3 * 60_000; // só tenta local se o aparelho anunciou na rede há pouco
+const SEEN_KEY = 'sarry.lan.seen';
+const SEEN_MAX_AGE = 7 * 24 * 3600_000; // endereços na rede costumam durar (DHCP)
+const HOME_FRESH_MS = 5 * 60_000; // só tenta local se houve sinal da rede de casa há pouco
 const SCAN_EVERY_MS = 60_000;
-const SCAN_MS = 6_000;
+const SCAN_MS = 8_000;
+const SWEEP_EVERY_MS = 10 * 60_000;
 const CONNECT_MS = 700;
 const COMMAND_MS = 3_000;
 
@@ -31,6 +35,10 @@ let config: { at: number; devices: LanDevice[] } | null = null;
 let syncing: Promise<void> | null = null;
 let lastResync = 0;
 let lastScan = 'sem varredura';
+let lastSweep = 0;
+let sweepInfo = '';
+let homeAt = 0; // último sinal de que o celular está na rede de casa
+let seenLoaded = false;
 const seen = new Map<string, Seen>();
 const queues = new Map<string, Promise<unknown>>();
 
@@ -70,6 +78,25 @@ export async function clearLanConfig() {
   config = null;
   seen.clear();
   await secureStorage.removeItem(CONFIG_KEY).catch(() => {});
+  await secureStorage.removeItem(SEEN_KEY).catch(() => {});
+}
+
+async function loadSeen() {
+  if (seenLoaded) return;
+  seenLoaded = true;
+  try {
+    const raw = await secureStorage.getItem(SEEN_KEY);
+    const saved = raw ? (JSON.parse(raw) as Record<string, Seen>) : {};
+    for (const [id, s] of Object.entries(saved)) {
+      if (!seen.has(id) && Date.now() - s.at < SEEN_MAX_AGE) seen.set(id, s);
+    }
+  } catch {
+    // sem endereços guardados: a varredura encontra de novo
+  }
+}
+
+function saveSeen() {
+  secureStorage.setItem(SEEN_KEY, JSON.stringify(Object.fromEntries(seen))).catch(() => {});
 }
 
 // Ouve os anúncios dos aparelhos na rede (portas 6666, 6667 e 7000)
@@ -88,8 +115,73 @@ export async function scanLan() {
     found.push(`${a.id.slice(-5)}:${a.version}@${p.port}`);
     const version = VERSIONS.find((v) => v === a.version);
     if (version) seen.set(a.id, { ip: a.ip || p.address, version, at: now });
+    homeAt = now;
   }
+  if (found.length) saveSeen();
   lastScan = `pacotes ${packets.length}, ilegíveis ${unreadable}, vistos ${[...new Set(found)].join(' ') || 'nenhum'}`;
+}
+
+// Abre e fecha uma conexão: diz se há um aparelho Tuya respondendo nesse endereço
+async function reachable(ip: string, timeoutMs: number) {
+  try {
+    const id = await SarryLan!.tcpOpen(ip, 6668, timeoutMs);
+    SarryLan!.tcpClose(id).catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Descobre qual aparelho está num endereço, testando as chaves locais (só o dono certo é aceito)
+async function identify(ip: string, candidates: LanDevice[]): Promise<{ device: LanDevice; version: Version } | null> {
+  for (const device of candidates) {
+    for (const version of ['3.5', '3.4', '3.3', '3.1'] as Version[]) {
+      let io: (Transport & { close(): void }) | null = null;
+      try {
+        io = await open(ip);
+        const session = new TuyaSession(io, utf8(device.localKey), version, device.id);
+        if (await session.probe(Date.now() + 800)) return { device, version };
+      } catch {
+        // chave ou versão erradas: tenta a próxima
+      } finally {
+        io?.close();
+      }
+    }
+  }
+  return null;
+}
+
+// Aparelhos Wi-Fi que não se anunciam: procura na rede de casa (a mesma faixa do hub) quem
+// responde na porta 6668 e identifica cada um pela chave local. Resultado guardado.
+export async function sweepLan() {
+  if (!SarryLan || !config) return;
+  const missing = config.devices.filter((d) => !d.nodeId && d.localKey && !seen.has(d.id));
+  const base = [...seen.values()].map((s) => s.ip).find((ip) => /^\d+\.\d+\.\d+\.\d+$/.test(ip));
+  if (!missing.length || !base) return;
+  lastSweep = Date.now();
+  const prefix = base.split('.').slice(0, 3).join('.');
+  const known = new Set([...seen.values()].map((s) => s.ip));
+  const targets = Array.from({ length: 254 }, (_, i) => `${prefix}.${i + 1}`).filter((ip) => !known.has(ip));
+  const open6668: string[] = [];
+  for (let i = 0; i < targets.length; i += 32) {
+    const batch = targets.slice(i, i + 32);
+    const ok = await Promise.all(batch.map((ip) => reachable(ip, 400)));
+    batch.forEach((ip, j) => ok[j] && open6668.push(ip));
+  }
+  let left = missing;
+  const found: string[] = [];
+  await Promise.all(
+    open6668.map(async (ip) => {
+      const hit = await identify(ip, left);
+      if (!hit) return;
+      left = left.filter((d) => d !== hit.device);
+      seen.set(hit.device.id, { ip, version: hit.version, at: Date.now() });
+      found.push(`${hit.device.id.slice(-5)}:${hit.version}`);
+      homeAt = Date.now();
+    }),
+  );
+  sweepInfo = `; busca: ${open6668.length} na porta 6668, achados ${found.join(' ') || 'nenhum'}`;
+  if (found.length) saveSeen();
 }
 
 // Repete a varredura enquanto o app estiver aberto; devolve a função que para
@@ -99,9 +191,15 @@ export function watchLan(): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   const loop = async () => {
     await scanLan();
+    if (!stopped && Date.now() - lastSweep > SWEEP_EVERY_MS) await sweepLan().catch(() => {});
     if (!stopped) timer = setTimeout(loop, SCAN_EVERY_MS);
   };
-  syncLanConfig().finally(loop);
+  (async () => {
+    await Promise.all([syncLanConfig(), loadSeen()]);
+    // um endereço guardado respondendo já mostra que estamos em casa, sem esperar a varredura
+    const first = [...seen.values()][0];
+    if (first && (await reachable(first.ip, 400))) homeAt = Date.now();
+  })().finally(loop);
   return () => {
     stopped = true;
     if (timer) clearTimeout(timer);
@@ -118,8 +216,8 @@ function plan(deviceId: string, commands: Command[]): Plan | string {
   if (!commands.length) return 'sem comandos';
   const hostId = device.nodeId && device.gatewayId ? device.gatewayId : device.id;
   const host = seen.get(hostId);
-  if (!host) return `não encontrado na rede (${lastScan})`;
-  if (Date.now() - host.at > SEEN_FRESH_MS) return 'anúncio na rede antigo';
+  if (!host) return `não encontrado na rede (${lastScan}${sweepInfo})`;
+  if (Date.now() - homeAt > HOME_FRESH_MS) return 'sem sinal da rede de casa';
   // a chave é a do aparelho que recebe a conexão (o hub, no caso dos Zigbee)
   const keyOwner = hostId === device.id ? device : config.devices.find((d) => d.id === hostId);
   if (!keyOwner?.localKey) return 'hub sem chave local';
@@ -179,7 +277,7 @@ function drop(hostId: string) {
 // Tenta pela rede local. ok=false: não deu (o app usa a nuvem e registra o motivo).
 export async function sendLocal(deviceId: string, commands: Command[]): Promise<LocalResult | null> {
   if (!lanAvailable) return null;
-  await loadConfig();
+  await Promise.all([loadConfig(), loadSeen()]);
   const p = plan(deviceId, commands);
   if (typeof p === 'string') return { ok: false, ms: 0, reason: p };
   const started = Date.now();
@@ -225,11 +323,14 @@ export async function sendLocal(deviceId: string, commands: Command[]): Promise<
       const kept = c;
       kept.idle = setTimeout(() => conns.get(p.hostId) === kept && drop(p.hostId), IDLE_MS);
     });
+    homeAt = Date.now();
     return { ok: true, ms: Date.now() - started, steps };
   } catch (err) {
     drop(p.hostId);
     // até a próxima varredura, esse aparelho vai pela nuvem; as chaves podem ter mudado (repareamento)
     seen.delete(p.hostId);
+    saveSeen();
+    lastSweep = 0; // o endereço pode ter mudado: procura de novo na próxima volta
     if (Date.now() - lastResync > 10 * 60_000) {
       lastResync = Date.now();
       syncLanConfig(true);
