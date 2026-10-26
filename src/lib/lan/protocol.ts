@@ -4,10 +4,12 @@ import { ecb, gcm } from '@noble/ciphers/aes.js';
 import { hmac } from '@noble/hashes/hmac.js';
 import { md5 } from '@noble/hashes/legacy.js';
 import { sha256 } from '@noble/hashes/sha2.js';
-import { concat, crc32, equal, fromUtf8, putU32, u32, utf8, type Bytes } from './bytes';
+import { concat, crc32, equal, fromBase64, fromUtf8, putU32, toBase64, u32, utf8, type Bytes } from './bytes';
 
-export type Version = '3.3' | '3.4' | '3.5';
-export const VERSIONS: Version[] = ['3.3', '3.4', '3.5'];
+const hex = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+
+export type Version = '3.1' | '3.2' | '3.3' | '3.4' | '3.5';
+export const VERSIONS: Version[] = ['3.1', '3.2', '3.3', '3.4', '3.5'];
 
 export const CMD = {
   NEG_START: 3,
@@ -209,11 +211,22 @@ export class TuyaSession {
     this.key = realKey;
   }
 
+  // 3.2 funciona como a 3.3; a 3.1 só cifra o comando (em base64, com assinatura MD5)
+  private get legacy() {
+    return this.version === '3.2' || this.version === '3.3';
+  }
+
   encode(cmd: number, payload: Uint8Array): Bytes {
     const seq = this.seq++;
-    if (this.version === '3.3') {
+    if (this.version === '3.1') {
+      if (cmd !== CMD.CONTROL) return pack55(seq, cmd, payload);
+      const data = utf8(toBase64(ecb(this.key).encrypt(payload)));
+      const sig = hex(md5(concat(utf8('data='), data, utf8('||lpv=3.1||'), this.key))).slice(8, 24);
+      return pack55(seq, cmd, concat(utf8('3.1'), utf8(sig), data));
+    }
+    if (this.legacy) {
       let p: Uint8Array = ecb(this.key).encrypt(payload);
-      if (!NO_HEADER.has(cmd)) p = concat(versionHeader('3.3'), p);
+      if (!NO_HEADER.has(cmd)) p = concat(versionHeader(this.version), p);
       return pack55(seq, cmd, p);
     }
     const p = NO_HEADER.has(cmd) ? payload : concat(versionHeader(this.version), payload);
@@ -224,7 +237,13 @@ export class TuyaSession {
   // Conteúdo de uma mensagem recebida, já decifrado e sem o cabeçalho de versão
   open(frame: Frame): Bytes {
     let p = frame.payload;
-    if (this.version === '3.3') {
+    if (this.version === '3.1') {
+      if (p.length > 19 && p[0] === 0x33 && p[1] === 0x2e && p[2] === 0x31) {
+        return ecb(this.key).decrypt(fromBase64(fromUtf8(p.slice(19)))) as Bytes;
+      }
+      return p;
+    }
+    if (this.legacy) {
       if (hasVersionHeader(p)) p = p.slice(15);
       if (!p.length || p[0] === 0x7b) return p;
       return ecb(this.key).decrypt(p) as Bytes;
@@ -256,7 +275,7 @@ export class TuyaSession {
 
   // Combina a chave da sessão (3.4 e 3.5)
   async negotiate(deadline: number) {
-    if (this.version === '3.3') return;
+    if (this.version !== '3.4' && this.version !== '3.5') return;
     await this.io.write(this.encode(CMD.NEG_START, this.localNonce));
     let frame: Frame;
     do frame = await this.readFrame(deadline);
@@ -285,7 +304,7 @@ export class TuyaSession {
   controlPayload(dps: Dps, cid?: string) {
     const t = Math.floor(Date.now() / 1000);
     // mesmos formatos do tinytuya (payload_dict: default, zigbee, v3.4/v3.5, zigbee_v3.4/v3.5)
-    if (this.version === '3.3') {
+    if (this.version !== '3.4' && this.version !== '3.5') {
       const body = cid ? { t, cid, dps } : { devId: this.devId, uid: this.devId, t: String(t), dps };
       return { cmd: CMD.CONTROL, body };
     }

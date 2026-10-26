@@ -30,6 +30,7 @@ const COMMAND_MS = 3_000;
 let config: { at: number; devices: LanDevice[] } | null = null;
 let syncing: Promise<void> | null = null;
 let lastResync = 0;
+let lastScan = 'sem varredura';
 const seen = new Map<string, Seen>();
 const queues = new Map<string, Promise<unknown>>();
 
@@ -76,12 +77,19 @@ export async function scanLan() {
   if (!SarryLan) return;
   const packets = await SarryLan.listenUdp([6666, 6667, 7000], SCAN_MS).catch(() => []);
   const now = Date.now();
+  const found: string[] = [];
+  let unreadable = 0;
   for (const p of packets) {
     const a = decodeAnnouncement(fromBase64(p.data));
-    if (!a) continue;
+    if (!a) {
+      unreadable++;
+      continue;
+    }
+    found.push(`${a.id.slice(-5)}:${a.version}@${p.port}`);
     const version = VERSIONS.find((v) => v === a.version);
     if (version) seen.set(a.id, { ip: a.ip || p.address, version, at: now });
   }
+  lastScan = `pacotes ${packets.length}, ilegíveis ${unreadable}, vistos ${[...new Set(found)].join(' ') || 'nenhum'}`;
 }
 
 // Repete a varredura enquanto o app estiver aberto; devolve a função que para
@@ -110,7 +118,7 @@ function plan(deviceId: string, commands: Command[]): Plan | string {
   if (!commands.length) return 'sem comandos';
   const hostId = device.nodeId && device.gatewayId ? device.gatewayId : device.id;
   const host = seen.get(hostId);
-  if (!host) return seen.size ? 'aparelho não encontrado na rede' : 'nenhum aparelho encontrado na rede';
+  if (!host) return `não encontrado na rede (${lastScan})`;
   if (Date.now() - host.at > SEEN_FRESH_MS) return 'anúncio na rede antigo';
   // a chave é a do aparelho que recebe a conexão (o hub, no caso dos Zigbee)
   const keyOwner = hostId === device.id ? device : config.devices.find((d) => d.id === hostId);
