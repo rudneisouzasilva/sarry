@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Maximize, X } from 'lucide-react-native';
 import { AcCard } from '@/components/AcCard';
+import { FanCard } from '@/components/FanCard';
 import { IconButton } from '@/components/Button';
 import { Grid } from '@/components/Grid';
 import { LightTile } from '@/components/LightTile';
@@ -27,6 +28,7 @@ export default function Painel() {
   const [now, setNow] = useState(new Date());
   const lights = lightsOf(devices);
   const acs = devices.filter((d) => d.kind === 'ac' && !d.hidden);
+  const fans = devices.filter((d) => d.kind === 'fan' && !d.hidden);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 15_000);
@@ -75,6 +77,14 @@ export default function Painel() {
             <View className="mt-5 gap-3">
               {acs.map((d) => (
                 <AcCard key={d.id} device={d} source="painel" large />
+              ))}
+            </View>
+          ) : null}
+
+          {fans.length ? (
+            <View className="mt-3 gap-3">
+              {fans.map((d) => (
+                <FanCard key={d.id} device={d} source="painel" />
               ))}
             </View>
           ) : null}
